@@ -39,8 +39,8 @@ type optsStruct struct {
 	keyspace   []byte
 	buffers    [][]byte
 	st         runtime.MemStats
-	vs         *valuestore.ValueStore
-	rvs        *valuestore.ValueStore
+	vs         valuestore.ValueStore
+	rvs        valuestore.ValueStore
 	ring       *ringPipe
 	rring      *ringPipe
 }
@@ -103,8 +103,8 @@ func main() {
 		opts.ring = NewRingPipe(1, conn)
 		opts.rring = NewRingPipe(2, rconn)
 		rvsopts := valuestore.OptList(vsopts...)
-		vsopts = append(vsopts, valuestore.OptRing(opts.ring))
-		rvsopts = append(rvsopts, valuestore.OptRing(opts.rring))
+		vsopts = append(vsopts, valuestore.OptMsgRing(opts.ring))
+		rvsopts = append(rvsopts, valuestore.OptMsgRing(opts.rring))
 		rvsopts = append(rvsopts, valuestore.OptPath("replicated"))
 		rvsopts = append(rvsopts, valuestore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
 		rvsopts = append(rvsopts, valuestore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
@@ -115,14 +115,14 @@ func main() {
 		}
 		wg.Add(1)
 		go func() {
-			opts.rvs = valuestore.NewValueStore(rvsopts...)
+			opts.rvs = valuestore.New(rvsopts...)
 			wg.Done()
 		}()
 	}
 	if opts.Debug {
 		vsopts = append(vsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ValueStore ", log.LstdFlags)))
 	}
-	opts.vs = valuestore.NewValueStore(vsopts...)
+	opts.vs = valuestore.New(vsopts...)
 	wg.Wait()
 	if opts.rvs != nil {
 		opts.ring.Start()

@@ -9,29 +9,29 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/valuestore"
+	"github.com/gholt/ring"
 )
 
 type msgMap struct {
 	lock    sync.RWMutex
-	mapping map[uint64]valuestore.MsgUnmarshaller
+	mapping map[ring.MsgType]ring.MsgUnmarshaller
 }
 
 func newMsgMap() *msgMap {
-	return &msgMap{mapping: make(map[uint64]valuestore.MsgUnmarshaller)}
+	return &msgMap{mapping: make(map[ring.MsgType]ring.MsgUnmarshaller)}
 }
 
-func (mm *msgMap) set(msgType uint64, f valuestore.MsgUnmarshaller) valuestore.MsgUnmarshaller {
+func (mm *msgMap) set(t ring.MsgType, f ring.MsgUnmarshaller) ring.MsgUnmarshaller {
 	mm.lock.Lock()
-	p := mm.mapping[msgType]
-	mm.mapping[msgType] = f
+	p := mm.mapping[t]
+	mm.mapping[t] = f
 	mm.lock.Unlock()
 	return p
 }
 
-func (mm *msgMap) get(msgType uint64) valuestore.MsgUnmarshaller {
+func (mm *msgMap) get(t ring.MsgType) ring.MsgUnmarshaller {
 	mm.lock.RLock()
-	f := mm.mapping[msgType]
+	f := mm.mapping[t]
 	mm.lock.RUnlock()
 	return f
 }
@@ -45,7 +45,7 @@ type ringPipe struct {
 	logWarning      *log.Logger
 	typeBytes       int
 	lengthBytes     int
-	writeChan       chan valuestore.Msg
+	writeChan       chan ring.Msg
 	writingDoneChan chan struct{}
 	sendDrops       uint32
 }
@@ -59,7 +59,7 @@ func NewRingPipe(nodeID uint64, c net.Conn) *ringPipe {
 		logWarning:      log.New(os.Stderr, "", log.LstdFlags),
 		typeBytes:       1,
 		lengthBytes:     3,
-		writeChan:       make(chan valuestore.Msg, 40),
+		writeChan:       make(chan ring.Msg, 40),
 		writingDoneChan: make(chan struct{}, 1),
 	}
 	return rp
@@ -81,15 +81,6 @@ func (rp *ringPipe) Responsible(partition uint32) bool {
 	return true
 }
 
-var msgTypes map[string]uint64 = map[string]uint64{
-	"PullReplication": 1,
-	"BulkSet":         2,
-}
-
-func (rp *ringPipe) MsgType(name string) uint64 {
-	return msgTypes[name]
-}
-
 func (rp *ringPipe) Start() {
 	go rp.reading()
 	go rp.writing()
@@ -97,11 +88,11 @@ func (rp *ringPipe) Start() {
 
 const _GLH_SEND_MSG_TIMEOUT = 1
 
-func (rp *ringPipe) SetMsgHandler(msgType uint64, h valuestore.MsgUnmarshaller) {
-	rp.msgMap.set(msgType, h)
+func (rp *ringPipe) SetMsgHandler(t ring.MsgType, h ring.MsgUnmarshaller) {
+	rp.msgMap.set(t, h)
 }
 
-func (rp *ringPipe) MsgToNode(nodeID uint64, m valuestore.Msg) bool {
+func (rp *ringPipe) MsgToNode(nodeID uint64, m ring.Msg) bool {
 	select {
 	case rp.writeChan <- m:
 		return true
@@ -111,7 +102,7 @@ func (rp *ringPipe) MsgToNode(nodeID uint64, m valuestore.Msg) bool {
 	}
 }
 
-func (rp *ringPipe) MsgToOtherReplicas(ringID uint64, partition uint32, m valuestore.Msg) bool {
+func (rp *ringPipe) MsgToOtherReplicas(ringID uint64, partition uint32, m ring.Msg) bool {
 	// TODO: If ringID has changed, partition invalid, etc. return false
 	select {
 	case rp.writeChan <- m:
@@ -151,7 +142,7 @@ func (rp *ringPipe) reading() {
 		for i := 0; i < rp.lengthBytes; i++ {
 			l = (l << 8) | uint64(b[rp.typeBytes+i])
 		}
-		f := rp.msgMap.get(t)
+		f := rp.msgMap.get(ring.MsgType(t))
 		if f != nil {
 			_, err = f(rp.conn, l)
 			if err != nil {
