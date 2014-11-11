@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/brimstore"
+	"github.com/gholt/valuestore"
 )
 
 type FlushWriter interface {
@@ -19,14 +19,14 @@ type FlushWriter interface {
 
 type msgMap struct {
 	lock    sync.RWMutex
-	mapping map[brimstore.MsgType]brimstore.MsgUnmarshaller
+	mapping map[valuestore.MsgType]valuestore.MsgUnmarshaller
 }
 
 func newMsgMap() *msgMap {
-	return &msgMap{mapping: make(map[brimstore.MsgType]brimstore.MsgUnmarshaller)}
+	return &msgMap{mapping: make(map[valuestore.MsgType]valuestore.MsgUnmarshaller)}
 }
 
-func (mm *msgMap) set(t brimstore.MsgType, f brimstore.MsgUnmarshaller) brimstore.MsgUnmarshaller {
+func (mm *msgMap) set(t valuestore.MsgType, f valuestore.MsgUnmarshaller) valuestore.MsgUnmarshaller {
 	mm.lock.Lock()
 	p := mm.mapping[t]
 	mm.mapping[t] = f
@@ -34,7 +34,7 @@ func (mm *msgMap) set(t brimstore.MsgType, f brimstore.MsgUnmarshaller) brimstor
 	return p
 }
 
-func (mm *msgMap) get(t brimstore.MsgType) brimstore.MsgUnmarshaller {
+func (mm *msgMap) get(t valuestore.MsgType) valuestore.MsgUnmarshaller {
 	mm.lock.RLock()
 	f := mm.mapping[t]
 	mm.lock.RUnlock()
@@ -49,7 +49,7 @@ type pipeMsgConn struct {
 	logWarning      *log.Logger
 	typeBytes       int
 	lengthBytes     int
-	writeChan       chan brimstore.Msg
+	writeChan       chan valuestore.Msg
 	writingDoneChan chan struct{}
 	sendDrops       uint32
 }
@@ -62,7 +62,7 @@ func NewPipeMsgConn(c net.Conn) *pipeMsgConn {
 		logWarning:      log.New(os.Stderr, "", log.LstdFlags),
 		typeBytes:       1,
 		lengthBytes:     3,
-		writeChan:       make(chan brimstore.Msg, 40),
+		writeChan:       make(chan valuestore.Msg, 40),
 		writingDoneChan: make(chan struct{}, 1),
 	}
 	return mc
@@ -75,11 +75,11 @@ func (mc *pipeMsgConn) Start() {
 
 const _GLH_SEND_MSG_TIMEOUT = 1
 
-func (mc *pipeMsgConn) SetHandler(t brimstore.MsgType, h brimstore.MsgUnmarshaller) {
+func (mc *pipeMsgConn) SetHandler(t valuestore.MsgType, h valuestore.MsgUnmarshaller) {
 	mc.msgMap.set(t, h)
 }
 
-func (mc *pipeMsgConn) SendToNode(nodeID uint64, m brimstore.Msg) bool {
+func (mc *pipeMsgConn) SendToNode(nodeID uint64, m valuestore.Msg) bool {
 	select {
 	case mc.writeChan <- m:
 		return true
@@ -89,7 +89,7 @@ func (mc *pipeMsgConn) SendToNode(nodeID uint64, m brimstore.Msg) bool {
 	}
 }
 
-func (mc *pipeMsgConn) SendToOtherReplicas(ringID uint64, partition uint32, m brimstore.Msg) bool {
+func (mc *pipeMsgConn) SendToOtherReplicas(ringID uint64, partition uint32, m valuestore.Msg) bool {
 	// TODO: If ringID has changed, partition invalid, etc. return false
 	select {
 	case mc.writeChan <- m:
@@ -121,9 +121,9 @@ func (mc *pipeMsgConn) reading() {
 			mc.logError.Print("error reading msg content", err)
 			return
 		}
-		var t brimstore.MsgType
+		var t valuestore.MsgType
 		for i := 0; i < mc.typeBytes; i++ {
-			t = (t << 8) | brimstore.MsgType(b[i])
+			t = (t << 8) | valuestore.MsgType(b[i])
 		}
 		var l uint64
 		for i := 0; i < mc.lengthBytes; i++ {

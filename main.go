@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/brimstore"
 	"github.com/gholt/brimutil"
+	"github.com/gholt/valuestore"
 	"github.com/jessevdk/go-flags"
 )
 
@@ -39,8 +39,8 @@ type optsStruct struct {
 	keyspace   []byte
 	buffers    [][]byte
 	st         runtime.MemStats
-	vs         *brimstore.ValueStore
-	rvs        *brimstore.ValueStore
+	vs         *valuestore.ValueStore
+	rvs        *valuestore.ValueStore
 }
 
 var opts optsStruct
@@ -91,36 +91,36 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	vsopts := brimstore.OptList(brimstore.OptCores(opts.Cores))
+	vsopts := valuestore.OptList(valuestore.OptCores(opts.Cores))
 	if opts.TombstoneAge > 0 {
-		vsopts = append(vsopts, brimstore.OptTombstoneAge(opts.TombstoneAge))
+		vsopts = append(vsopts, valuestore.OptTombstoneAge(opts.TombstoneAge))
 	}
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
 		conn, conn2 := net.Pipe()
-		vs2opts := brimstore.OptList(vsopts...)
-		vsopts = append(vsopts, brimstore.OptRing(&ring{1}))
-		vs2opts = append(vs2opts, brimstore.OptRing(&ring{2}))
-		vs2opts = append(vs2opts, brimstore.OptPath("replicated"))
-		vs2opts = append(vs2opts, brimstore.OptMsgConn(NewPipeMsgConn(conn2)))
-		vs2opts = append(vs2opts, brimstore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, brimstore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, brimstore.OptLogWarning(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, brimstore.OptLogInfo(log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)))
+		vs2opts := valuestore.OptList(vsopts...)
+		vsopts = append(vsopts, valuestore.OptRing(&ring{1}))
+		vs2opts = append(vs2opts, valuestore.OptRing(&ring{2}))
+		vs2opts = append(vs2opts, valuestore.OptPath("replicated"))
+		vs2opts = append(vs2opts, valuestore.OptMsgConn(NewPipeMsgConn(conn2)))
+		vs2opts = append(vs2opts, valuestore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		vs2opts = append(vs2opts, valuestore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		vs2opts = append(vs2opts, valuestore.OptLogWarning(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		vs2opts = append(vs2opts, valuestore.OptLogInfo(log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)))
 		if opts.Debug {
-			vs2opts = append(vs2opts, brimstore.OptLogDebug(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+			vs2opts = append(vs2opts, valuestore.OptLogDebug(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
 		}
 		wg.Add(1)
 		go func() {
-			opts.rvs = brimstore.NewValueStore(vs2opts...)
+			opts.rvs = valuestore.NewValueStore(vs2opts...)
 			wg.Done()
 		}()
-		vsopts = append(vsopts, brimstore.OptMsgConn(NewPipeMsgConn(conn)))
+		vsopts = append(vsopts, valuestore.OptMsgConn(NewPipeMsgConn(conn)))
 	}
 	if opts.Debug {
-		vsopts = append(vsopts, brimstore.OptLogDebug(log.New(os.Stderr, "ValueStore ", log.LstdFlags)))
+		vsopts = append(vsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ValueStore ", log.LstdFlags)))
 	}
-	opts.vs = brimstore.NewValueStore(vsopts...)
+	opts.vs = valuestore.NewValueStore(vsopts...)
 	wg.Wait()
 	if opts.rvs != nil {
 		opts.rvs.EnableWrites()
@@ -359,7 +359,7 @@ func lookup() {
 			var d uint64
 			for o := 0; o < len(keys); o += 16 {
 				timestamp, _, err := opts.vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-				if err == brimstore.ErrNotFound {
+				if err == valuestore.ErrNotFound {
 					if timestamp == 0 {
 						m++
 					} else {
@@ -407,7 +407,7 @@ func read() {
 				var d uint64
 				for o := 0; o < len(keys); o += 16 {
 					timestamp, v, err := opts.vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-					if err == brimstore.ErrNotFound {
+					if err == valuestore.ErrNotFound {
 						if timestamp == 0 {
 							m++
 						} else {
