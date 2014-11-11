@@ -41,6 +41,8 @@ type optsStruct struct {
 	st         runtime.MemStats
 	vs         *valuestore.ValueStore
 	rvs        *valuestore.ValueStore
+	ring       *ringPipe
+	rring      *ringPipe
 }
 
 var opts optsStruct
@@ -91,31 +93,31 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	vsopts := valuestore.OptList(valuestore.OptCores(opts.Cores))
+	vsopts := valuestore.OptList(valuestore.OptWorkers(opts.Cores))
 	if opts.TombstoneAge > 0 {
 		vsopts = append(vsopts, valuestore.OptTombstoneAge(opts.TombstoneAge))
 	}
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
-		conn, conn2 := net.Pipe()
-		vs2opts := valuestore.OptList(vsopts...)
-		vsopts = append(vsopts, valuestore.OptRing(&ring{1}))
-		vs2opts = append(vs2opts, valuestore.OptRing(&ring{2}))
-		vs2opts = append(vs2opts, valuestore.OptPath("replicated"))
-		vs2opts = append(vs2opts, valuestore.OptMsgConn(NewPipeMsgConn(conn2)))
-		vs2opts = append(vs2opts, valuestore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, valuestore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, valuestore.OptLogWarning(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		vs2opts = append(vs2opts, valuestore.OptLogInfo(log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)))
+		conn, rconn := net.Pipe()
+		opts.ring = NewRingPipe(1, conn)
+		opts.rring = NewRingPipe(2, rconn)
+		rvsopts := valuestore.OptList(vsopts...)
+		vsopts = append(vsopts, valuestore.OptRing(opts.ring))
+		rvsopts = append(rvsopts, valuestore.OptRing(opts.rring))
+		rvsopts = append(rvsopts, valuestore.OptPath("replicated"))
+		rvsopts = append(rvsopts, valuestore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		rvsopts = append(rvsopts, valuestore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		rvsopts = append(rvsopts, valuestore.OptLogWarning(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+		rvsopts = append(rvsopts, valuestore.OptLogInfo(log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)))
 		if opts.Debug {
-			vs2opts = append(vs2opts, valuestore.OptLogDebug(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+			rvsopts = append(rvsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
 		}
 		wg.Add(1)
 		go func() {
-			opts.rvs = valuestore.NewValueStore(vs2opts...)
+			opts.rvs = valuestore.NewValueStore(rvsopts...)
 			wg.Done()
 		}()
-		vsopts = append(vsopts, valuestore.OptMsgConn(NewPipeMsgConn(conn)))
 	}
 	if opts.Debug {
 		vsopts = append(vsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ValueStore ", log.LstdFlags)))
@@ -123,6 +125,8 @@ func main() {
 	opts.vs = valuestore.NewValueStore(vsopts...)
 	wg.Wait()
 	if opts.rvs != nil {
+		opts.ring.Start()
+		opts.rring.Start()
 		opts.rvs.EnableWrites()
 	}
 	opts.vs.EnableWrites()
@@ -205,13 +209,13 @@ func main() {
 	memstat()
 	log.Print("gather stats:")
 	begin = time.Now()
-	var statsCount2 uint64
-	var statsLength2 uint64
-	var stats2 fmt.Stringer
+	var rstatsCount uint64
+	var rstatsLength uint64
+	var rstats fmt.Stringer
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			statsCount2, statsLength2, stats2 = opts.rvs.GatherStats(opts.ExtendedStats)
+			rstatsCount, rstatsLength, rstats = opts.rvs.GatherStats(opts.ExtendedStats)
 			wg.Done()
 		}()
 	}
@@ -227,10 +231,10 @@ func main() {
 	}
 	if opts.rvs != nil {
 		if opts.ExtendedStats {
-			log.Print("ReplicatedValueStore: stats:\n", stats2.String())
+			log.Print("ReplicatedValueStore: stats:\n", rstats.String())
 		} else {
-			log.Println("ReplicatedValueStore: count", statsCount2)
-			log.Println("ReplicatedValueStore: length", statsLength2)
+			log.Println("ReplicatedValueStore: count", rstatsCount)
+			log.Println("ReplicatedValueStore: length", rstatsLength)
 		}
 	}
 	memstat()
