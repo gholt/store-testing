@@ -132,10 +132,12 @@ func main() {
 	opts.vs.EnableWrites()
 	if opts.rvs != nil {
 		opts.rvs.EnableDiscard()
-		opts.rvs.EnableOutReplication()
+		opts.rvs.EnableOutPullReplication()
+		opts.rvs.EnableOutPushReplication()
 	}
 	opts.vs.EnableDiscard()
-	opts.vs.EnableOutReplication()
+	opts.vs.EnableOutPullReplication()
+	opts.vs.EnableOutPushReplication()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to start")
 	memstat()
@@ -197,14 +199,16 @@ func main() {
 		wg.Add(1)
 		go func() {
 			opts.rvs.DisableDiscard()
-			opts.rvs.DisableOutReplication()
+			opts.rvs.DisableOutPullReplication()
+			opts.rvs.DisableOutPushReplication()
 			opts.rvs.DisableWrites()
 			opts.rvs.Flush()
 			wg.Done()
 		}()
 	}
 	opts.vs.DisableDiscard()
-	opts.vs.DisableOutReplication()
+	opts.vs.DisableOutPullReplication()
+	opts.vs.DisableOutPushReplication()
 	opts.vs.DisableWrites()
 	opts.vs.Flush()
 	wg.Wait()
@@ -271,12 +275,14 @@ func outrep() {
 		wg.Add(1)
 		go func() {
 			opts.rvs.DisableDiscard()
-			opts.rvs.DisableOutReplication()
+			opts.rvs.DisableOutPullReplication()
+			opts.rvs.DisableOutPushReplication()
 			wg.Done()
 		}()
 	}
 	opts.vs.DisableDiscard()
-	opts.vs.DisableOutReplication()
+	opts.vs.DisableOutPullReplication()
+	opts.vs.DisableOutPushReplication()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to disable background tasks")
@@ -285,11 +291,13 @@ func outrep() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.OutReplicationPass()
+			opts.rvs.OutPullReplicationPass()
+			opts.rvs.OutPushReplicationPass()
 			wg.Done()
 		}()
 	}
-	opts.vs.OutReplicationPass()
+	opts.vs.OutPullReplicationPass()
+	opts.vs.OutPushReplicationPass()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to run outgoing replication")
@@ -299,12 +307,14 @@ func outrep() {
 		wg.Add(1)
 		go func() {
 			opts.rvs.EnableDiscard()
-			opts.rvs.EnableOutReplication()
+			opts.rvs.EnableOutPullReplication()
+			opts.rvs.EnableOutPushReplication()
 			wg.Done()
 		}()
 	}
 	opts.vs.EnableDiscard()
-	opts.vs.EnableOutReplication()
+	opts.vs.EnableOutPullReplication()
+	opts.vs.EnableOutPushReplication()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to re-enable background tasks")
