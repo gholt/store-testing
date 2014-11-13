@@ -30,7 +30,7 @@ type optsStruct struct {
 	Timestamp     uint64 `long:"timestamp" description:"Timestamp value. Default: current time"`
 	TombstoneAge  int    `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
 	Positional    struct {
-		Tests []string `name:"tests" description:"background blockprof cpuprof delete lookup read run write"`
+		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup outrep read run write"`
 	} `positional-args:"yes"`
 	blockprofi int
 	blockproff *os.File
@@ -59,11 +59,11 @@ func main() {
 	}
 	for _, arg := range opts.Positional.Tests {
 		switch arg {
-		case "background":
 		case "blockprof":
 		case "cpuprof":
 		case "delete":
 		case "lookup":
+		case "outrep":
 		case "read":
 		case "run":
 		case "write":
@@ -131,16 +131,16 @@ func main() {
 	}
 	opts.vs.EnableWrites()
 	if opts.rvs != nil {
-		opts.rvs.EnableBackgroundTasks()
+		opts.rvs.EnableDiscard()
+		opts.rvs.EnableOutReplication()
 	}
-	opts.vs.EnableBackgroundTasks()
+	opts.vs.EnableDiscard()
+	opts.vs.EnableOutReplication()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to start")
 	memstat()
 	for _, arg := range opts.Positional.Tests {
 		switch arg {
-		case "background":
-			background()
 		case "blockprof":
 			if opts.blockproff != nil {
 				log.Print("blockprof: off")
@@ -180,6 +180,8 @@ func main() {
 			delete()
 		case "lookup":
 			lookup()
+		case "outrep":
+			outrep()
 		case "read":
 			read()
 		case "run":
@@ -194,13 +196,15 @@ func main() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableBackgroundTasks()
+			opts.rvs.DisableDiscard()
+			opts.rvs.DisableOutReplication()
 			opts.rvs.DisableWrites()
 			opts.rvs.Flush()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableBackgroundTasks()
+	opts.vs.DisableDiscard()
+	opts.vs.DisableOutReplication()
 	opts.vs.DisableWrites()
 	opts.vs.Flush()
 	wg.Wait()
@@ -259,18 +263,20 @@ func memstat() {
 	log.Printf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
 }
 
-func background() {
+func outrep() {
 	log.Print("disabling background tasks:")
 	begin := time.Now()
 	wg := &sync.WaitGroup{}
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableBackgroundTasks()
+			opts.rvs.DisableDiscard()
+			opts.rvs.DisableOutReplication()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableBackgroundTasks()
+	opts.vs.DisableDiscard()
+	opts.vs.DisableOutReplication()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to disable background tasks")
@@ -279,24 +285,26 @@ func background() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.BackgroundNow()
+			opts.rvs.OutReplicationPass()
 			wg.Done()
 		}()
 	}
-	opts.vs.BackgroundNow()
+	opts.vs.OutReplicationPass()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to run background tasks")
+	log.Println(dur, "to run outgoing replication")
 	log.Print("re-enabling background tasks:")
 	begin = time.Now()
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.EnableBackgroundTasks()
+			opts.rvs.EnableDiscard()
+			opts.rvs.EnableOutReplication()
 			wg.Done()
 		}()
 	}
-	opts.vs.EnableBackgroundTasks()
+	opts.vs.EnableDiscard()
+	opts.vs.EnableOutReplication()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to re-enable background tasks")
