@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gholt/brimutil"
-	"github.com/gholt/valuestore"
+	"github.com/gholt/experimental-valuestore"
 	"github.com/jessevdk/go-flags"
 )
 

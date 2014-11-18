@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/ring"
+	"github.com/gholt/experimental-ring"
 )
 
 type msgMap struct {
@@ -78,7 +78,7 @@ func (rp *ringPipe) NodeID() uint64 {
 }
 
 func (rp *ringPipe) Responsible(partition uint32) bool {
-	return true
+	return partition&1 == uint32(rp.nodeID)&1
 }
 
 func (rp *ringPipe) Start() {
