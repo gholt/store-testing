@@ -78,7 +78,9 @@ func (rp *ringPipe) NodeID() uint64 {
 }
 
 func (rp *ringPipe) Responsible(partition uint32) bool {
-	return partition&1 == uint32(rp.nodeID)&1
+	// TODO: Testing push replication, so node 2 is responsible for everything
+	// but we're putting everything into node 1.
+	return rp.nodeID == 2
 }
 
 func (rp *ringPipe) Start() {
