@@ -13,22 +13,23 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gholt/brimtime"
 	"github.com/gholt/brimutil"
 	"github.com/gholt/experimental-valuestore"
 	"github.com/jessevdk/go-flags"
 )
 
 type optsStruct struct {
-	Clients       int    `long:"clients" description:"The number of clients. Default: cores*cores"`
-	Cores         int    `long:"cores" description:"The number of cores. Default: CPU core count"`
-	Debug         bool   `long:"debug" description:"Turns on debug output."`
-	ExtendedStats bool   `long:"extended-stats" description:"Extended statistics at exit."`
-	Length        int    `short:"l" long:"length" description:"Length of values. Default: 0"`
-	Number        int    `short:"n" long:"number" description:"Number of keys. Default: 0"`
-	Random        int    `long:"random" description:"Random number seed. Default: 0"`
-	Replicate     bool   `long:"replicate" description:"Creates a second value store that will test replication."`
-	Timestamp     uint64 `long:"timestamp" description:"Timestamp value. Default: current time"`
-	TombstoneAge  int    `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
+	Clients       int   `long:"clients" description:"The number of clients. Default: cores*cores"`
+	Cores         int   `long:"cores" description:"The number of cores. Default: CPU core count"`
+	Debug         bool  `long:"debug" description:"Turns on debug output."`
+	ExtendedStats bool  `long:"extended-stats" description:"Extended statistics at exit."`
+	Length        int   `short:"l" long:"length" description:"Length of values. Default: 0"`
+	Number        int   `short:"n" long:"number" description:"Number of keys. Default: 0"`
+	Random        int   `long:"random" description:"Random number seed. Default: 0"`
+	Replicate     bool  `long:"replicate" description:"Creates a second value store that will test replication."`
+	Timestamp     int64 `long:"timestamp" description:"Timestamp value. Default: current time"`
+	TombstoneAge  int   `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
 	Positional    struct {
 		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup outrep read run write"`
 	} `positional-args:"yes"`
@@ -82,7 +83,7 @@ func main() {
 		opts.Clients = opts.Cores * opts.Cores
 	}
 	if opts.Timestamp == 0 {
-		opts.Timestamp = uint64(time.Now().UnixNano())
+		opts.Timestamp = brimtime.TimeToUnixMicro(time.Now())
 	}
 	opts.keyspace = make([]byte, opts.Number*16)
 	brimutil.NewSeededScrambled(int64(opts.Random)).Read(opts.keyspace)
@@ -483,7 +484,7 @@ func read() {
 func write() {
 	log.Print("write:")
 	var superseded uint64
-	timestamp := opts.Timestamp & 0xfffffffffffffffe
+	timestamp := opts.Timestamp
 	if timestamp == 0 {
 		timestamp = 2
 	}
