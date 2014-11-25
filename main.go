@@ -194,6 +194,17 @@ func main() {
 		}
 		memstat()
 	}
+	if opts.blockproff != nil {
+		runtime.SetBlockProfileRate(0)
+		pprof.Lookup("block").WriteTo(opts.blockproff, 0)
+		opts.blockproff.Close()
+		opts.blockproff = nil
+	}
+	if opts.cpuproff != nil {
+		pprof.StopCPUProfile()
+		opts.cpuproff.Close()
+		opts.cpuproff = nil
+	}
 	log.Print("close:")
 	begin = time.Now()
 	if opts.rvs != nil {
@@ -247,17 +258,6 @@ func main() {
 		}
 	}
 	memstat()
-	if opts.blockproff != nil {
-		runtime.SetBlockProfileRate(0)
-		pprof.Lookup("block").WriteTo(opts.blockproff, 0)
-		opts.blockproff.Close()
-		opts.blockproff = nil
-	}
-	if opts.cpuproff != nil {
-		pprof.StopCPUProfile()
-		opts.cpuproff.Close()
-		opts.cpuproff = nil
-	}
 }
 
 func memstat() {
