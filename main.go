@@ -132,11 +132,11 @@ func main() {
 	}
 	opts.vs.EnableWrites()
 	if opts.rvs != nil {
-		opts.rvs.EnableDiscard()
+		opts.rvs.EnableTombstoneDiscard()
 		opts.rvs.EnableOutPullReplication()
 		opts.rvs.EnableOutPushReplication()
 	}
-	opts.vs.EnableDiscard()
+	opts.vs.EnableTombstoneDiscard()
 	opts.vs.EnableOutPullReplication()
 	opts.vs.EnableOutPushReplication()
 	dur := time.Now().Sub(begin)
@@ -210,7 +210,7 @@ func main() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableDiscard()
+			opts.rvs.DisableTombstoneDiscard()
 			opts.rvs.DisableOutPullReplication()
 			opts.rvs.DisableOutPushReplication()
 			opts.rvs.DisableWrites()
@@ -218,7 +218,7 @@ func main() {
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableDiscard()
+	opts.vs.DisableTombstoneDiscard()
 	opts.vs.DisableOutPullReplication()
 	opts.vs.DisableOutPushReplication()
 	opts.vs.DisableWrites()
@@ -275,13 +275,13 @@ func outrep() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableDiscard()
+			opts.rvs.DisableTombstoneDiscard()
 			opts.rvs.DisableOutPullReplication()
 			opts.rvs.DisableOutPushReplication()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableDiscard()
+	opts.vs.DisableTombstoneDiscard()
 	opts.vs.DisableOutPullReplication()
 	opts.vs.DisableOutPushReplication()
 	wg.Wait()
@@ -307,13 +307,13 @@ func outrep() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.EnableDiscard()
+			opts.rvs.EnableTombstoneDiscard()
 			opts.rvs.EnableOutPullReplication()
 			opts.rvs.EnableOutPushReplication()
 			wg.Done()
 		}()
 	}
-	opts.vs.EnableDiscard()
+	opts.vs.EnableTombstoneDiscard()
 	opts.vs.EnableOutPullReplication()
 	opts.vs.EnableOutPushReplication()
 	wg.Wait()
