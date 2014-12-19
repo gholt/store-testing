@@ -128,17 +128,18 @@ func main() {
 	if opts.rvs != nil {
 		opts.ring.Start()
 		opts.rring.Start()
-		opts.rvs.EnableWrites()
+		wg.Add(1)
+		go func() {
+			opts.rvs.EnableAll()
+			wg.Done()
+		}()
 	}
-	opts.vs.EnableWrites()
-	if opts.rvs != nil {
-		opts.rvs.EnableTombstoneDiscard()
-		opts.rvs.EnableOutPullReplication()
-		opts.rvs.EnableOutPushReplication()
-	}
-	opts.vs.EnableTombstoneDiscard()
-	opts.vs.EnableOutPullReplication()
-	opts.vs.EnableOutPushReplication()
+	wg.Add(1)
+	go func() {
+		opts.vs.EnableAll()
+		wg.Done()
+	}()
+	wg.Wait()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to start")
 	memstat()
@@ -210,18 +211,12 @@ func main() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableTombstoneDiscard()
-			opts.rvs.DisableOutPullReplication()
-			opts.rvs.DisableOutPushReplication()
-			opts.rvs.DisableWrites()
+			opts.rvs.DisableAll()
 			opts.rvs.Flush()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableTombstoneDiscard()
-	opts.vs.DisableOutPullReplication()
-	opts.vs.DisableOutPushReplication()
-	opts.vs.DisableWrites()
+	opts.vs.DisableAll()
 	opts.vs.Flush()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
@@ -275,15 +270,11 @@ func outrep() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableTombstoneDiscard()
-			opts.rvs.DisableOutPullReplication()
-			opts.rvs.DisableOutPushReplication()
+			opts.rvs.DisableAllBackground()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableTombstoneDiscard()
-	opts.vs.DisableOutPullReplication()
-	opts.vs.DisableOutPushReplication()
+	opts.vs.DisableAllBackground()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to disable background tasks")
@@ -307,15 +298,15 @@ func outrep() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.EnableTombstoneDiscard()
-			opts.rvs.EnableOutPullReplication()
-			opts.rvs.EnableOutPushReplication()
+			opts.rvs.EnableAll()
 			wg.Done()
 		}()
 	}
-	opts.vs.EnableTombstoneDiscard()
-	opts.vs.EnableOutPullReplication()
-	opts.vs.EnableOutPushReplication()
+	wg.Add(1)
+	go func() {
+		opts.vs.EnableAll()
+		wg.Done()
+	}()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to re-enable background tasks")
