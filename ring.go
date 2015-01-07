@@ -129,11 +129,11 @@ func (rp *ringPipe) reading() {
 				}
 				return
 			}
-			sn, err = rp.conn.Read(b[n:])
+			sn, err = rp.conn.Read(b[n:len(b)])
 			n += sn
 		}
 		if err != nil {
-			rp.logError.Print("error reading msg content", err)
+			rp.logError.Print("error reading msg start", err)
 			return
 		}
 		var t uint64
@@ -155,7 +155,7 @@ func (rp *ringPipe) reading() {
 			rp.logWarning.Printf("unknown msg type %d", t)
 			for l > 0 {
 				if err != nil {
-					rp.logError.Print("err reading msg content", err)
+					rp.logError.Print("err reading unknown msg content", err)
 					return
 				}
 				if l >= uint64(len(d)) {
