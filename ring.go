@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/experimental-ring"
+	"github.com/gholt/ring"
 )
 
 type msgMap struct {

@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/brimtime"
-	"github.com/gholt/brimutil"
-	"github.com/gholt/experimental-valuestore"
+	"github.com/gholt/brimtime-v1"
+	"github.com/gholt/brimutil-v1"
+	"github.com/gholt/valuestore"
 	"github.com/jessevdk/go-flags"
 )
 
