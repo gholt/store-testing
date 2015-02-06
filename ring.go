@@ -37,7 +37,7 @@ func (mm *msgMap) get(t ring.MsgType) ring.MsgUnmarshaller {
 }
 
 type ringPipe struct {
-	nodeID          uint64
+	localNodeID     uint64
 	conn            net.Conn
 	lock            sync.RWMutex
 	msgMap          *msgMap
@@ -50,9 +50,9 @@ type ringPipe struct {
 	sendDrops       uint32
 }
 
-func NewRingPipe(nodeID uint64, c net.Conn) *ringPipe {
+func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
 	rp := &ringPipe{
-		nodeID:          nodeID,
+		localNodeID:     localNodeID,
 		conn:            c,
 		msgMap:          newMsgMap(),
 		logError:        log.New(os.Stderr, "", log.LstdFlags),
@@ -65,22 +65,22 @@ func NewRingPipe(nodeID uint64, c net.Conn) *ringPipe {
 	return rp
 }
 
-func (rp *ringPipe) ID() uint64 {
+func (rp *ringPipe) Version() uint64 {
 	return 1
 }
 
-func (rp *ringPipe) PartitionPower() uint16 {
+func (rp *ringPipe) PartitionBits() uint16 {
 	return 8
 }
 
-func (rp *ringPipe) NodeID() uint64 {
-	return rp.nodeID
+func (rp *ringPipe) LocalNodeID() uint64 {
+	return rp.localNodeID
 }
 
 func (rp *ringPipe) Responsible(partition uint32) bool {
 	// TODO: Testing push replication, so node 2 is responsible for everything
 	// but we're putting everything into node 1.
-	return rp.nodeID == 2
+	return rp.localNodeID == 2
 }
 
 func (rp *ringPipe) Start() {
@@ -94,7 +94,7 @@ func (rp *ringPipe) SetMsgHandler(t ring.MsgType, h ring.MsgUnmarshaller) {
 	rp.msgMap.set(t, h)
 }
 
-func (rp *ringPipe) MsgToNode(nodeID uint64, m ring.Msg) bool {
+func (rp *ringPipe) MsgToNode(localNodeID uint64, m ring.Msg) bool {
 	select {
 	case rp.writeChan <- m:
 		return true
