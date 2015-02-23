@@ -65,8 +65,12 @@ func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
 	return rp
 }
 
-func (rp *ringPipe) Version() uint64 {
+func (rp *ringPipe) Version() int64 {
 	return 1
+}
+
+func (rp *ringPipe) ReplicaCount() int {
+	return 2
 }
 
 func (rp *ringPipe) PartitionBits() uint16 {
@@ -104,8 +108,8 @@ func (rp *ringPipe) MsgToNode(localNodeID uint64, m ring.Msg) bool {
 	}
 }
 
-func (rp *ringPipe) MsgToOtherReplicas(ringID uint64, partition uint32, m ring.Msg) bool {
-	// TODO: If ringID has changed, partition invalid, etc. return false
+func (rp *ringPipe) MsgToOtherReplicas(ringVersion int64, partition uint32, m ring.Msg) bool {
+	// TODO: If ringVersion has changed, partition invalid, etc. return false
 	select {
 	case rp.writeChan <- m:
 		return true
