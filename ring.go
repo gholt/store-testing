@@ -105,6 +105,15 @@ func (rp *ringPipe) Nodes() []ring.Node {
 	return []ring.Node{&node{id: 0}, &node{id: 1}, &node{id: 2}}
 }
 
+func (rp *ringPipe) Node(id uint64) ring.Node {
+	for _, node := range rp.Nodes() {
+		if node.NodeID() == id {
+			return node
+		}
+	}
+	return nil
+}
+
 func (rp *ringPipe) LocalNode() ring.Node {
 	return &node{id: rp.localNodeID}
 }
