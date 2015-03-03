@@ -106,25 +106,23 @@ func (rp *ringPipe) SetMsgHandler(t ring.MsgType, h ring.MsgUnmarshaller) {
 	rp.msgMap.set(t, h)
 }
 
-func (rp *ringPipe) MsgToNode(localNodeID uint64, m ring.Msg) bool {
+func (rp *ringPipe) MsgToNode(localNodeID uint64, m ring.Msg) {
 	select {
 	case rp.writeChan <- m:
-		return true
 	case <-time.After(_GLH_SEND_MSG_TIMEOUT * time.Second):
 		atomic.AddUint32(&rp.sendDrops, 1)
-		return false
 	}
+	m.Done()
 }
 
-func (rp *ringPipe) MsgToOtherReplicas(ringVersion int64, partition uint32, m ring.Msg) bool {
+func (rp *ringPipe) MsgToOtherReplicas(ringVersion int64, partition uint32, m ring.Msg) {
 	// TODO: If ringVersion has changed, partition invalid, etc. return false
 	select {
 	case rp.writeChan <- m:
-		return true
 	case <-time.After(_GLH_SEND_MSG_TIMEOUT * time.Second):
 		atomic.AddUint32(&rp.sendDrops, 1)
-		return false
 	}
+	m.Done()
 }
 
 func (rp *ringPipe) reading() {
@@ -208,7 +206,6 @@ func (rp *ringPipe) writing() {
 			rp.logError.Print("err writing msg content", err)
 			break
 		}
-		m.Done()
 	}
 	rp.writingDoneChan <- struct{}{}
 }
