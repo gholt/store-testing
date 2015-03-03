@@ -36,6 +36,30 @@ func (mm *msgMap) get(t ring.MsgType) ring.MsgUnmarshaller {
 	return f
 }
 
+type node struct {
+	id uint64
+}
+
+func (n *node) NodeID() uint64 {
+	return n.id
+}
+
+func (n *node) Active() bool {
+	return true
+}
+
+func (n *node) Capacity() uint32 {
+	return 1
+}
+
+func (n *node) TierValues() []int {
+	return nil
+}
+
+func (n *node) Address() string {
+	return ""
+}
+
 type ringPipe struct {
 	localNodeID     uint64
 	conn            net.Conn
@@ -69,16 +93,20 @@ func (rp *ringPipe) Version() int64 {
 	return 1
 }
 
-func (rp *ringPipe) ReplicaCount() int {
-	return 2
-}
-
 func (rp *ringPipe) PartitionBitCount() uint16 {
 	return 8
 }
 
-func (rp *ringPipe) LocalNodeID() uint64 {
-	return rp.localNodeID
+func (rp *ringPipe) ReplicaCount() int {
+	return 2
+}
+
+func (rp *ringPipe) Nodes() []ring.Node {
+	return []ring.Node{&node{id: 0}, &node{id: 1}, &node{id: 2}}
+}
+
+func (rp *ringPipe) LocalNode() ring.Node {
+	return &node{id: rp.localNodeID}
 }
 
 func (rp *ringPipe) Responsible(partition uint32) bool {
@@ -87,8 +115,8 @@ func (rp *ringPipe) Responsible(partition uint32) bool {
 	return rp.localNodeID == 2
 }
 
-func (rp *ringPipe) ResponsibleIDs(partition uint32) []uint64 {
-	return []uint64{2, 2}
+func (rp *ringPipe) ResponsibleNodes(partition uint32) []ring.Node {
+	return []ring.Node{&node{id: 2}, &node{id: 2}}
 }
 
 func (rp *ringPipe) Start() {
