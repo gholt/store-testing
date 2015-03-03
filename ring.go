@@ -73,7 +73,7 @@ func (rp *ringPipe) ReplicaCount() int {
 	return 2
 }
 
-func (rp *ringPipe) PartitionBits() uint16 {
+func (rp *ringPipe) PartitionBitCount() uint16 {
 	return 8
 }
 
@@ -85,6 +85,10 @@ func (rp *ringPipe) Responsible(partition uint32) bool {
 	// TODO: Testing push replication, so node 2 is responsible for everything
 	// but we're putting everything into node 1.
 	return rp.localNodeID == 2
+}
+
+func (rp *ringPipe) ResponsibleIDs(partition uint32) []uint64 {
+	return []uint64{2, 2}
 }
 
 func (rp *ringPipe) Start() {
