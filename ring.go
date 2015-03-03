@@ -98,6 +98,10 @@ func (rp *ringPipe) Start() {
 
 const _GLH_SEND_MSG_TIMEOUT = 1
 
+func (rp *ringPipe) MaxMsgLength() uint64 {
+	return 16 * 1024 * 1024
+}
+
 func (rp *ringPipe) SetMsgHandler(t ring.MsgType, h ring.MsgUnmarshaller) {
 	rp.msgMap.set(t, h)
 }
