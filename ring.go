@@ -14,14 +14,14 @@ import (
 
 type msgMap struct {
 	lock    sync.RWMutex
-	mapping map[ring.MsgType]ring.MsgUnmarshaller
+	mapping map[uint64]ring.MsgUnmarshaller
 }
 
 func newMsgMap() *msgMap {
-	return &msgMap{mapping: make(map[ring.MsgType]ring.MsgUnmarshaller)}
+	return &msgMap{mapping: make(map[uint64]ring.MsgUnmarshaller)}
 }
 
-func (mm *msgMap) set(t ring.MsgType, f ring.MsgUnmarshaller) ring.MsgUnmarshaller {
+func (mm *msgMap) set(t uint64, f ring.MsgUnmarshaller) ring.MsgUnmarshaller {
 	mm.lock.Lock()
 	p := mm.mapping[t]
 	mm.mapping[t] = f
@@ -29,7 +29,7 @@ func (mm *msgMap) set(t ring.MsgType, f ring.MsgUnmarshaller) ring.MsgUnmarshall
 	return p
 }
 
-func (mm *msgMap) get(t ring.MsgType) ring.MsgUnmarshaller {
+func (mm *msgMap) get(t uint64) ring.MsgUnmarshaller {
 	mm.lock.RLock()
 	f := mm.mapping[t]
 	mm.lock.RUnlock()
@@ -139,7 +139,7 @@ func (rp *ringPipe) MaxMsgLength() uint64 {
 	return 16 * 1024 * 1024
 }
 
-func (rp *ringPipe) SetMsgHandler(t ring.MsgType, h ring.MsgUnmarshaller) {
+func (rp *ringPipe) SetMsgHandler(t uint64, h ring.MsgUnmarshaller) {
 	rp.msgMap.set(t, h)
 }
 
@@ -191,7 +191,7 @@ func (rp *ringPipe) reading() {
 		for i := 0; i < rp.lengthBytes; i++ {
 			l = (l << 8) | uint64(b[rp.typeBytes+i])
 		}
-		f := rp.msgMap.get(ring.MsgType(t))
+		f := rp.msgMap.get(t)
 		if f != nil {
 			_, err = f(rp.conn, l)
 			if err != nil {
