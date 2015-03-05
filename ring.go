@@ -128,6 +128,10 @@ func (rp *ringPipe) ResponsibleNodes(partition uint32) []ring.Node {
 	return []ring.Node{&node{id: 2}, &node{id: 2}}
 }
 
+func (rp *ringPipe) Stats() *ring.RingStats {
+	return &ring.RingStats{}
+}
+
 func (rp *ringPipe) Start() {
 	go rp.reading()
 	go rp.writing()
