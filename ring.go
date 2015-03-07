@@ -61,7 +61,7 @@ func (n *node) Address() string {
 }
 
 type ringPipe struct {
-	localNodeID     uint64
+	ring            *ring.Ring
 	conn            net.Conn
 	lock            sync.RWMutex
 	msgMap          *msgMap
@@ -75,8 +75,12 @@ type ringPipe struct {
 }
 
 func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
+	b := ring.NewBuilder(2)
+	b.Add(&ring.Node{ID: 1, Capacity: 1})
+	b.Add(&ring.Node{ID: 2, Capacity: 1})
+	b.Add(&ring.Node{ID: 3, Capacity: 1})
 	rp := &ringPipe{
-		localNodeID:     localNodeID,
+		ring:            b.Ring(localNodeID),
 		conn:            c,
 		msgMap:          newMsgMap(),
 		logError:        log.New(os.Stderr, "", log.LstdFlags),
@@ -89,47 +93,8 @@ func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
 	return rp
 }
 
-func (rp *ringPipe) Version() int64 {
-	return 1
-}
-
-func (rp *ringPipe) PartitionBitCount() uint16 {
-	return 8
-}
-
-func (rp *ringPipe) ReplicaCount() int {
-	return 2
-}
-
-func (rp *ringPipe) Nodes() []ring.Node {
-	return []ring.Node{&node{id: 0}, &node{id: 1}, &node{id: 2}}
-}
-
-func (rp *ringPipe) Node(id uint64) ring.Node {
-	for _, node := range rp.Nodes() {
-		if node.NodeID() == id {
-			return node
-		}
-	}
-	return nil
-}
-
-func (rp *ringPipe) LocalNode() ring.Node {
-	return &node{id: rp.localNodeID}
-}
-
-func (rp *ringPipe) Responsible(partition uint32) bool {
-	// TODO: Testing push replication, so node 2 is responsible for everything
-	// but we're putting everything into node 1.
-	return rp.localNodeID == 2
-}
-
-func (rp *ringPipe) ResponsibleNodes(partition uint32) []ring.Node {
-	return []ring.Node{&node{id: 2}, &node{id: 2}}
-}
-
-func (rp *ringPipe) Stats() *ring.RingStats {
-	return &ring.RingStats{}
+func (rp *ringPipe) Ring() *ring.Ring {
+	return rp.ring
 }
 
 func (rp *ringPipe) Start() {
