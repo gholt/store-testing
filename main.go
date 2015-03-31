@@ -101,8 +101,8 @@ func main() {
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
 		conn, rconn := net.Pipe()
-		opts.ring = NewRingPipe(1, conn)
-		opts.rring = NewRingPipe(2, rconn)
+		opts.ring = NewRingPipe("127.0.0.1:11111", conn)
+		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
 		rvsopts := valuestore.OptList(vsopts...)
 		vsopts = append(vsopts, valuestore.OptMsgRing(opts.ring))
 		rvsopts = append(rvsopts, valuestore.OptMsgRing(opts.rring))

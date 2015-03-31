@@ -61,7 +61,7 @@ func (n *node) Address() string {
 }
 
 type ringPipe struct {
-	ring            *ring.Ring
+	ring            ring.Ring
 	conn            net.Conn
 	lock            sync.RWMutex
 	msgMap          *msgMap
@@ -74,13 +74,26 @@ type ringPipe struct {
 	sendDrops       uint32
 }
 
-func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
-	b := ring.NewBuilder(2)
-	b.Add(&ring.Node{ID: 1, Capacity: 1})
-	b.Add(&ring.Node{ID: 2, Capacity: 1})
-	b.Add(&ring.Node{ID: 3, Capacity: 1})
+func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
+	b := ring.NewBuilder()
+	b.SetReplicaCount(2)
+	var localNodeID uint64
+	n := b.AddNode(true, 1, nil, []string{"127.0.0.1:11111"}, "")
+	if localNodeAddress == "127.0.0.1:11111" {
+		localNodeID = n.ID()
+	}
+	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:22222"}, "")
+	if localNodeAddress == "127.0.0.1:22222" {
+		localNodeID = n.ID()
+	}
+	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:33333"}, "")
+	if localNodeAddress == "127.0.0.1:33333" {
+		localNodeID = n.ID()
+	}
+	r := b.Ring()
+	r.SetLocalNode(localNodeID)
 	rp := &ringPipe{
-		ring:            b.Ring(localNodeID),
+		ring:            r,
 		conn:            c,
 		msgMap:          newMsgMap(),
 		logError:        log.New(os.Stderr, "", log.LstdFlags),
@@ -93,7 +106,7 @@ func NewRingPipe(localNodeID uint64, c net.Conn) *ringPipe {
 	return rp
 }
 
-func (rp *ringPipe) Ring() *ring.Ring {
+func (rp *ringPipe) Ring() ring.Ring {
 	return rp.ring
 }
 
