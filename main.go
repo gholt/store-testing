@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/brimtime-v1"
-	"github.com/gholt/brimutil-v1"
 	"github.com/gholt/valuestore"
 	"github.com/jessevdk/go-flags"
+	"gopkg.in/gholt/brimtime.v1"
+	"gopkg.in/gholt/brimutil.v1"
 )
 
 type optsStruct struct {
