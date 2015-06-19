@@ -98,8 +98,8 @@ func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
 		msgMap:          newMsgMap(),
 		logError:        log.New(os.Stderr, "", log.LstdFlags),
 		logWarning:      log.New(os.Stderr, "", log.LstdFlags),
-		typeBytes:       1,
-		lengthBytes:     3,
+		typeBytes:       8,
+		lengthBytes:     8,
 		writeChan:       make(chan ring.Msg, 40),
 		writingDoneChan: make(chan struct{}, 1),
 	}
