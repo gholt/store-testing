@@ -94,36 +94,37 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	vsopts := valuestore.OptList(valuestore.OptWorkers(opts.Cores))
+	vscfg := &valuestore.Config{Workers: opts.Cores}
 	if opts.TombstoneAge > 0 {
-		vsopts = append(vsopts, valuestore.OptTombstoneAge(opts.TombstoneAge))
+		vscfg.TombstoneAge = opts.TombstoneAge
 	}
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
 		conn, rconn := net.Pipe()
 		opts.ring = NewRingPipe("127.0.0.1:11111", conn)
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
-		rvsopts := valuestore.OptList(vsopts...)
-		vsopts = append(vsopts, valuestore.OptMsgRing(opts.ring))
-		rvsopts = append(rvsopts, valuestore.OptMsgRing(opts.rring))
-		rvsopts = append(rvsopts, valuestore.OptPath("replicated"))
-		rvsopts = append(rvsopts, valuestore.OptLogCritical(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		rvsopts = append(rvsopts, valuestore.OptLogError(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		rvsopts = append(rvsopts, valuestore.OptLogWarning(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
-		rvsopts = append(rvsopts, valuestore.OptLogInfo(log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)))
+		rvscfg := &valuestore.Config{}
+		*rvscfg = *vscfg
+		vscfg.MsgRing = opts.ring
+		rvscfg.MsgRing = opts.rring
+		rvscfg.Path = "replicated"
+		rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
+		rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
+		rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
+		rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)
 		if opts.Debug {
-			rvsopts = append(rvsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)))
+			rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
 		}
 		wg.Add(1)
 		go func() {
-			opts.rvs = valuestore.New(rvsopts...)
+			opts.rvs = valuestore.New(rvscfg)
 			wg.Done()
 		}()
 	}
 	if opts.Debug {
-		vsopts = append(vsopts, valuestore.OptLogDebug(log.New(os.Stderr, "ValueStore ", log.LstdFlags)))
+		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags)
 	}
-	opts.vs = valuestore.New(vsopts...)
+	opts.vs = valuestore.New(vscfg)
 	wg.Wait()
 	if opts.rvs != nil {
 		opts.ring.Start()
