@@ -78,15 +78,15 @@ func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
 	b := ring.NewBuilder()
 	b.SetReplicaCount(2)
 	var localNodeID uint64
-	n := b.AddNode(true, 1, nil, []string{"127.0.0.1:11111"}, "")
+	n := b.AddNode(true, 1, nil, []string{"127.0.0.1:11111"}, "", nil)
 	if localNodeAddress == "127.0.0.1:11111" {
 		localNodeID = n.ID()
 	}
-	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:22222"}, "")
+	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:22222"}, "", nil)
 	if localNodeAddress == "127.0.0.1:22222" {
 		localNodeID = n.ID()
 	}
-	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:33333"}, "")
+	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:33333"}, "", nil)
 	if localNodeAddress == "127.0.0.1:33333" {
 		localNodeID = n.ID()
 	}
