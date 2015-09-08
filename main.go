@@ -108,12 +108,12 @@ func main() {
 		vscfg.MsgRing = opts.ring
 		rvscfg.MsgRing = opts.rring
 		rvscfg.Path = "replicated"
-		rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
-		rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
-		rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
-		rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags)
+		rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+		rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+		rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+		rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags).Printf
 		if opts.Debug {
-			rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags)
+			rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
 		}
 		wg.Add(1)
 		go func() {
@@ -122,7 +122,7 @@ func main() {
 		}()
 	}
 	if opts.Debug {
-		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags)
+		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
 	}
 	opts.vs = valuestore.New(vscfg)
 	wg.Wait()
