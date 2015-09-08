@@ -254,6 +254,9 @@ func main() {
 		}
 	}
 	memstat()
+	if opts.rvs != nil {
+		log.Print("drops", opts.ring.sendDrops, opts.rring.sendDrops)
+	}
 }
 
 func memstat() {

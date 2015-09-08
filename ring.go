@@ -86,10 +86,10 @@ func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
 	if localNodeAddress == "127.0.0.1:22222" {
 		localNodeID = n.ID()
 	}
-	n = b.AddNode(true, 1, nil, []string{"127.0.0.1:33333"}, "", nil)
-	if localNodeAddress == "127.0.0.1:33333" {
-		localNodeID = n.ID()
-	}
+	// n = b.AddNode(true, 1, nil, []string{"127.0.0.1:33333"}, "", nil)
+	// if localNodeAddress == "127.0.0.1:33333" {
+	// 	localNodeID = n.ID()
+	// }
 	r := b.Ring()
 	r.SetLocalNode(localNodeID)
 	rp := &ringPipe{
@@ -100,7 +100,7 @@ func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
 		logWarning:      log.New(os.Stderr, "", log.LstdFlags),
 		typeBytes:       8,
 		lengthBytes:     8,
-		writeChan:       make(chan ring.Msg, 40),
+		writeChan:       make(chan ring.Msg, 8),
 		writingDoneChan: make(chan struct{}, 1),
 	}
 	return rp
@@ -115,8 +115,6 @@ func (rp *ringPipe) Start() {
 	go rp.writing()
 }
 
-const _GLH_SEND_MSG_TIMEOUT = 1
-
 func (rp *ringPipe) MaxMsgLength() uint64 {
 	return 16 * 1024 * 1024
 }
@@ -125,26 +123,26 @@ func (rp *ringPipe) SetMsgHandler(t uint64, h ring.MsgUnmarshaller) {
 	rp.msgMap.set(t, h)
 }
 
-func (rp *ringPipe) MsgToNode(localNodeID uint64, m ring.Msg) {
+func (rp *ringPipe) MsgToNode(m ring.Msg, localNodeID uint64, timeout time.Duration) {
 	select {
 	case rp.writeChan <- m:
-	case <-time.After(_GLH_SEND_MSG_TIMEOUT * time.Second):
+	case <-time.After(timeout):
 		atomic.AddUint32(&rp.sendDrops, 1)
 	}
-	m.Done()
+	m.Free()
 }
 
-func (rp *ringPipe) MsgToOtherReplicas(ringVersion int64, partition uint32, m ring.Msg) {
-	// TODO: If ringVersion has changed, partition invalid, etc. return false
+func (rp *ringPipe) MsgToOtherReplicas(m ring.Msg, partition uint32, timeout time.Duration) {
 	select {
 	case rp.writeChan <- m:
-	case <-time.After(_GLH_SEND_MSG_TIMEOUT * time.Second):
+	case <-time.After(timeout):
 		atomic.AddUint32(&rp.sendDrops, 1)
 	}
-	m.Done()
+	m.Free()
 }
 
 func (rp *ringPipe) reading() {
+	time.Sleep(50 * time.Millisecond)
 	b := make([]byte, rp.typeBytes+rp.lengthBytes)
 	d := make([]byte, 65536)
 	for {
@@ -201,6 +199,7 @@ func (rp *ringPipe) reading() {
 func (rp *ringPipe) writing() {
 	b := make([]byte, rp.typeBytes+rp.lengthBytes)
 	for {
+		time.Sleep(50 * time.Millisecond)
 		m := <-rp.writeChan
 		if m == nil {
 			break
