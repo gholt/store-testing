@@ -223,7 +223,7 @@ func main() {
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to close")
 	memstat()
-	log.Print("gather stats:")
+	log.Print("stats:")
 	begin = time.Now()
 	var rstatsCount uint64
 	var rstatsLength uint64
@@ -231,14 +231,14 @@ func main() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			rstatsCount, rstatsLength, rstats = opts.rvs.GatherStats(opts.ExtendedStats)
+			rstatsCount, rstatsLength, rstats = opts.rvs.Stats(opts.ExtendedStats)
 			wg.Done()
 		}()
 	}
-	statsCount, statsLength, stats := opts.vs.GatherStats(opts.ExtendedStats)
+	statsCount, statsLength, stats := opts.vs.Stats(opts.ExtendedStats)
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to gather stats")
+	log.Println(dur, "to obtain stats")
 	if opts.ExtendedStats {
 		log.Print("ValueStore: stats:\n", stats.String())
 	} else {
