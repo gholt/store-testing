@@ -123,7 +123,7 @@ func main() {
 				go func() {
 					for {
 						time.Sleep(60 * time.Second)
-						log.Println("ReplicatedValueStore:\n" + opts.rvs.Stats(false))
+						log.Println("ReplicatedValueStore:\n" + opts.rvs.Stats(false).String())
 					}
 				}()
 			}
@@ -138,7 +138,7 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(60 * time.Second)
-				log.Println("ValueStore:\n" + opts.vs.Stats(false))
+				log.Println("ValueStore:\n" + opts.vs.Stats(false).String())
 			}
 		}()
 	}
