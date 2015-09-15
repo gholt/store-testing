@@ -24,6 +24,7 @@ type optsStruct struct {
 	Cores         int   `long:"cores" description:"The number of cores. Default: CPU core count"`
 	Debug         bool  `long:"debug" description:"Turns on debug output."`
 	ExtendedStats bool  `long:"extended-stats" description:"Extended statistics at exit."`
+	Metrics       bool  `long:"metrics" description:"Displays metrics one per minute."`
 	Length        int   `short:"l" long:"length" description:"Length of values. Default: 0"`
 	Number        int   `short:"n" long:"number" description:"Number of keys. Default: 0"`
 	Random        int   `long:"random" description:"Random number seed. Default: 0"`
@@ -118,6 +119,14 @@ func main() {
 		wg.Add(1)
 		go func() {
 			opts.rvs = valuestore.New(rvscfg)
+			if opts.Metrics {
+				go func() {
+					for {
+						time.Sleep(60 * time.Second)
+						log.Println("ReplicatedValueStore:\n" + opts.rvs.Stats(false))
+					}
+				}()
+			}
 			wg.Done()
 		}()
 	}
@@ -125,6 +134,14 @@ func main() {
 		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
 	}
 	opts.vs = valuestore.New(vscfg)
+	if opts.Metrics {
+		go func() {
+			for {
+				time.Sleep(60 * time.Second)
+				log.Println("ValueStore:\n" + opts.vs.Stats(false))
+			}
+		}()
+	}
 	wg.Wait()
 	if opts.rvs != nil {
 		opts.ring.Start()
