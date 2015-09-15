@@ -225,32 +225,30 @@ func main() {
 	memstat()
 	log.Print("stats:")
 	begin = time.Now()
-	var rstatsCount uint64
-	var rstatsLength uint64
-	var rstats fmt.Stringer
+	var rstats *valuestore.Stats
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			rstatsCount, rstatsLength, rstats = opts.rvs.Stats(opts.ExtendedStats)
+			rstats = opts.rvs.Stats(opts.ExtendedStats)
 			wg.Done()
 		}()
 	}
-	statsCount, statsLength, stats := opts.vs.Stats(opts.ExtendedStats)
+	stats := opts.vs.Stats(opts.ExtendedStats)
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to obtain stats")
 	if opts.ExtendedStats {
 		log.Print("ValueStore: stats:\n", stats.String())
 	} else {
-		log.Println("ValueStore: count", statsCount)
-		log.Println("ValueStore: length", statsLength)
+		log.Println("ValueStore: Values", stats.Values)
+		log.Println("ValueStore: ValueBytes", stats.ValueBytes)
 	}
 	if opts.rvs != nil {
 		if opts.ExtendedStats {
 			log.Print("ReplicatedValueStore: stats:\n", rstats.String())
 		} else {
-			log.Println("ReplicatedValueStore: count", rstatsCount)
-			log.Println("ReplicatedValueStore: length", rstatsLength)
+			log.Println("ReplicatedValueStore: Values", rstats.Values)
+			log.Println("ReplicatedValueStore: ValueBytes", rstats.ValueBytes)
 		}
 	}
 	memstat()
