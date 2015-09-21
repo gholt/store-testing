@@ -75,7 +75,7 @@ type ringPipe struct {
 }
 
 func NewRingPipe(localNodeAddress string, c net.Conn) *ringPipe {
-	b := ring.NewBuilder()
+	b := ring.NewBuilder(64)
 	b.SetReplicaCount(2)
 	var localNodeID uint64
 	n := b.AddNode(true, 1, nil, []string{"127.0.0.1:11111"}, "", nil)
