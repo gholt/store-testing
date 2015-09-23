@@ -246,11 +246,11 @@ func main() {
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			rstats = opts.rvs.Stats(opts.ExtendedStats)
+			rstats = opts.rvs.Stats(opts.ExtendedStats).(*valuestore.Stats)
 			wg.Done()
 		}()
 	}
-	stats := opts.vs.Stats(opts.ExtendedStats)
+	stats := opts.vs.Stats(opts.ExtendedStats).(*valuestore.Stats)
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to obtain stats")
