@@ -118,7 +118,11 @@ func main() {
 		}
 		wg.Add(1)
 		go func() {
-			opts.rvs = valuestore.New(rvscfg)
+			var err error
+			opts.rvs, err = valuestore.New(rvscfg)
+			if err != nil {
+				panic(err)
+			}
 			if opts.Metrics {
 				go func() {
 					for {
@@ -133,7 +137,11 @@ func main() {
 	if opts.Debug {
 		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
 	}
-	opts.vs = valuestore.New(vscfg)
+	var err error
+	opts.vs, err = valuestore.New(vscfg)
+	if err != nil {
+		panic(err)
+	}
 	if opts.Metrics {
 		go func() {
 			for {
