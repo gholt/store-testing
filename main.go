@@ -95,7 +95,7 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	vscfg := &valuestore.Config{Workers: opts.Cores}
+	vscfg := &valuestore.ValueStoreConfig{Workers: opts.Cores}
 	if opts.TombstoneAge > 0 {
 		vscfg.TombstoneAge = opts.TombstoneAge
 	}
@@ -104,7 +104,7 @@ func main() {
 		conn, rconn := net.Pipe()
 		opts.ring = NewRingPipe("127.0.0.1:11111", conn)
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
-		rvscfg := &valuestore.Config{}
+		rvscfg := &valuestore.ValueStoreConfig{}
 		*rvscfg = *vscfg
 		vscfg.MsgRing = opts.ring
 		rvscfg.MsgRing = opts.rring
@@ -119,7 +119,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			var err error
-			opts.rvs, err = valuestore.New(rvscfg)
+			opts.rvs, err = valuestore.NewValueStore(rvscfg)
 			if err != nil {
 				panic(err)
 			}
@@ -138,7 +138,7 @@ func main() {
 		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
 	}
 	var err error
-	opts.vs, err = valuestore.New(vscfg)
+	opts.vs, err = valuestore.NewValueStore(vscfg)
 	if err != nil {
 		panic(err)
 	}
@@ -250,15 +250,15 @@ func main() {
 	memstat()
 	log.Print("stats:")
 	begin = time.Now()
-	var rstats *valuestore.Stats
+	var rstats *valuestore.ValueStoreStats
 	if opts.rvs != nil {
 		wg.Add(1)
 		go func() {
-			rstats = opts.rvs.Stats(opts.ExtendedStats).(*valuestore.Stats)
+			rstats = opts.rvs.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
 			wg.Done()
 		}()
 	}
-	stats := opts.vs.Stats(opts.ExtendedStats).(*valuestore.Stats)
+	stats := opts.vs.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to obtain stats")
