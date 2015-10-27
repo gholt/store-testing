@@ -20,6 +20,7 @@ import (
 )
 
 type optsStruct struct {
+	GroupStore    bool  `short:"g" long:"groupstore" description:"Use GroupStore instead of ValueStore."`
 	Clients       int   `long:"clients" description:"The number of clients. Default: cores*cores"`
 	Cores         int   `long:"cores" description:"The number of cores. Default: CPU core count"`
 	Debug         bool  `long:"debug" description:"Turns on debug output."`
@@ -41,8 +42,8 @@ type optsStruct struct {
 	keyspace   []byte
 	buffers    [][]byte
 	st         runtime.MemStats
-	vs         valuestore.ValueStore
-	rvs        valuestore.ValueStore
+	store      valuestore.Store
+	repstore   valuestore.Store
 	ring       *ringPipe
 	rring      *ringPipe
 }
@@ -95,31 +96,63 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	vscfg := &valuestore.ValueStoreConfig{Workers: opts.Cores}
+	var vscfg *valuestore.ValueStoreConfig
+	var gscfg *valuestore.GroupStoreConfig
+	if opts.GroupStore {
+		gscfg = &valuestore.GroupStoreConfig{Workers: opts.Cores}
+	} else {
+		vscfg = &valuestore.ValueStoreConfig{Workers: opts.Cores}
+	}
 	if opts.TombstoneAge > 0 {
-		vscfg.TombstoneAge = opts.TombstoneAge
+		if opts.GroupStore {
+			gscfg.TombstoneAge = opts.TombstoneAge
+		} else {
+			vscfg.TombstoneAge = opts.TombstoneAge
+		}
 	}
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
 		conn, rconn := net.Pipe()
 		opts.ring = NewRingPipe("127.0.0.1:11111", conn)
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
-		rvscfg := &valuestore.ValueStoreConfig{}
-		*rvscfg = *vscfg
-		vscfg.MsgRing = opts.ring
-		rvscfg.MsgRing = opts.rring
-		rvscfg.Path = "replicated"
-		rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-		rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-		rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-		rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags).Printf
+		var rvscfg *valuestore.ValueStoreConfig
+		var rgscfg *valuestore.GroupStoreConfig
+		if opts.GroupStore {
+			rgscfg = &valuestore.GroupStoreConfig{}
+			*rgscfg = *gscfg
+			gscfg.MsgRing = opts.ring
+			rgscfg.MsgRing = opts.rring
+			rgscfg.Path = "replicated"
+			rgscfg.LogCritical = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+			rgscfg.LogError = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+			rgscfg.LogWarning = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+			rgscfg.LogInfo = log.New(os.Stdout, "ReplicatedGroupStore ", log.LstdFlags).Printf
+		} else {
+			rvscfg = &valuestore.ValueStoreConfig{}
+			*rvscfg = *vscfg
+			vscfg.MsgRing = opts.ring
+			rvscfg.MsgRing = opts.rring
+			rvscfg.Path = "replicated"
+			rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags).Printf
+		}
 		if opts.Debug {
-			rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			if opts.GroupStore {
+				rgscfg.LogDebug = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+			} else {
+				rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			}
 		}
 		wg.Add(1)
 		go func() {
 			var err error
-			opts.rvs, err = valuestore.NewValueStore(rvscfg)
+			if opts.GroupStore {
+				opts.repstore, err = valuestore.NewGroupStore(rgscfg)
+			} else {
+				opts.repstore, err = valuestore.NewValueStore(rvscfg)
+			}
 			if err != nil {
 				panic(err)
 			}
@@ -127,7 +160,11 @@ func main() {
 				go func() {
 					for {
 						time.Sleep(60 * time.Second)
-						log.Println("ReplicatedValueStore:\n" + opts.rvs.Stats(false).String())
+						if opts.GroupStore {
+							log.Println("ReplicatedGroupStore:\n" + opts.repstore.Stats(false).String())
+						} else {
+							log.Println("ReplicatedValueStore:\n" + opts.repstore.Stats(false).String())
+						}
 					}
 				}()
 			}
@@ -135,10 +172,18 @@ func main() {
 		}()
 	}
 	if opts.Debug {
-		vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
+		if opts.GroupStore {
+			gscfg.LogDebug = log.New(os.Stderr, "GroupStore ", log.LstdFlags).Printf
+		} else {
+			vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
+		}
 	}
 	var err error
-	opts.vs, err = valuestore.NewValueStore(vscfg)
+	if opts.GroupStore {
+		opts.store, err = valuestore.NewGroupStore(gscfg)
+	} else {
+		opts.store, err = valuestore.NewValueStore(vscfg)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -146,23 +191,27 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(60 * time.Second)
-				log.Println("ValueStore:\n" + opts.vs.Stats(false).String())
+				if opts.GroupStore {
+					log.Println("GroupStore:\n" + opts.store.Stats(false).String())
+				} else {
+					log.Println("ValueStore:\n" + opts.store.Stats(false).String())
+				}
 			}
 		}()
 	}
 	wg.Wait()
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		opts.ring.Start()
 		opts.rring.Start()
 		wg.Add(1)
 		go func() {
-			opts.rvs.EnableAll()
+			opts.repstore.EnableAll()
 			wg.Done()
 		}()
 	}
 	wg.Add(1)
 	go func() {
-		opts.vs.EnableAll()
+		opts.store.EnableAll()
 		wg.Done()
 	}()
 	wg.Wait()
@@ -234,50 +283,79 @@ func main() {
 	}
 	log.Print("close:")
 	begin = time.Now()
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableAll()
-			opts.rvs.Flush()
+			opts.repstore.DisableAll()
+			opts.repstore.Flush()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableAll()
-	opts.vs.Flush()
+	opts.store.DisableAll()
+	opts.store.Flush()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to close")
 	memstat()
 	log.Print("stats:")
 	begin = time.Now()
-	var rstats *valuestore.ValueStoreStats
-	if opts.rvs != nil {
+	var rvsStats *valuestore.ValueStoreStats
+	var rgsStats *valuestore.GroupStoreStats
+	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			rstats = opts.rvs.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+			if opts.GroupStore {
+				rgsStats = opts.repstore.Stats(opts.ExtendedStats).(*valuestore.GroupStoreStats)
+			} else {
+				rvsStats = opts.repstore.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+			}
 			wg.Done()
 		}()
 	}
-	stats := opts.vs.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+	var vsStats *valuestore.ValueStoreStats
+	var gsStats *valuestore.GroupStoreStats
+	if opts.GroupStore {
+		gsStats = opts.store.Stats(opts.ExtendedStats).(*valuestore.GroupStoreStats)
+	} else {
+		vsStats = opts.store.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to obtain stats")
 	if opts.ExtendedStats {
-		log.Print("ValueStore: stats:\n", stats.String())
-	} else {
-		log.Println("ValueStore: Values", stats.Values)
-		log.Println("ValueStore: ValueBytes", stats.ValueBytes)
-	}
-	if opts.rvs != nil {
-		if opts.ExtendedStats {
-			log.Print("ReplicatedValueStore: stats:\n", rstats.String())
+		if opts.GroupStore {
+			log.Print("GroupStore: stats:\n", gsStats.String())
 		} else {
-			log.Println("ReplicatedValueStore: Values", rstats.Values)
-			log.Println("ReplicatedValueStore: ValueBytes", rstats.ValueBytes)
+			log.Print("ValueStore: stats:\n", vsStats.String())
+		}
+	} else {
+		if opts.GroupStore {
+			log.Println("GroupStore: Values", gsStats.Values)
+			log.Println("GroupStore: ValueBytes", gsStats.ValueBytes)
+		} else {
+			log.Println("ValueStore: Values", vsStats.Values)
+			log.Println("ValueStore: ValueBytes", vsStats.ValueBytes)
+		}
+	}
+	if opts.repstore != nil {
+		if opts.ExtendedStats {
+			if opts.GroupStore {
+				log.Print("ReplicatedGroupStore: stats:\n", rgsStats.String())
+			} else {
+				log.Print("ReplicatedValueStore: stats:\n", rvsStats.String())
+			}
+		} else {
+			if opts.GroupStore {
+				log.Println("ReplicatedGroupStore: Values", rgsStats.Values)
+				log.Println("ReplicatedGroupStore: ValueBytes", rgsStats.ValueBytes)
+			} else {
+				log.Println("ReplicatedValueStore: Values", rvsStats.Values)
+				log.Println("ReplicatedValueStore: ValueBytes", rvsStats.ValueBytes)
+			}
 		}
 	}
 	memstat()
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		log.Print("drops", opts.ring.sendDrops, opts.rring.sendDrops)
 	}
 }
@@ -294,44 +372,44 @@ func outrep() {
 	log.Print("disabling background tasks:")
 	begin := time.Now()
 	wg := &sync.WaitGroup{}
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.DisableAllBackground()
+			opts.repstore.DisableAllBackground()
 			wg.Done()
 		}()
 	}
-	opts.vs.DisableAllBackground()
+	opts.store.DisableAllBackground()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
 	log.Println(dur, "to disable background tasks")
 	log.Print("background tasks:")
 	begin = time.Now()
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.OutPullReplicationPass()
-			opts.rvs.OutPushReplicationPass()
+			opts.repstore.OutPullReplicationPass()
+			opts.repstore.OutPushReplicationPass()
 			wg.Done()
 		}()
 	}
-	opts.vs.OutPullReplicationPass()
-	opts.vs.OutPushReplicationPass()
+	opts.store.OutPullReplicationPass()
+	opts.store.OutPushReplicationPass()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	log.Println(dur, "to run outgoing replication")
 	log.Print("re-enabling background tasks:")
 	begin = time.Now()
-	if opts.rvs != nil {
+	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.rvs.EnableAll()
+			opts.repstore.EnableAll()
 			wg.Done()
 		}()
 	}
 	wg.Add(1)
 	go func() {
-		opts.vs.EnableAll()
+		opts.store.EnableAll()
 		wg.Done()
 	}()
 	wg.Wait()
@@ -357,11 +435,23 @@ func delete() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
-			for o := 0; o < len(keys); o += 16 {
-				if oldTimestamp, err := opts.vs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
-					panic(err)
-				} else if oldTimestamp > timestamp {
-					s++
+			if opts.GroupStore {
+				gs := opts.store.(valuestore.GroupStore)
+				for o := 0; o < len(keys); o += 16 {
+					if oldTimestamp, err := gs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
+						panic(err)
+					} else if oldTimestamp > timestamp {
+						s++
+					}
+				}
+			} else {
+				vs := opts.store.(valuestore.ValueStore)
+				for o := 0; o < len(keys); o += 16 {
+					if oldTimestamp, err := vs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
+						panic(err)
+					} else if oldTimestamp > timestamp {
+						s++
+					}
 				}
 			}
 			if s > 0 {
@@ -371,7 +461,7 @@ func delete() {
 		}(i)
 	}
 	wg.Wait()
-	opts.vs.Flush()
+	opts.store.Flush()
 	dur := time.Now().Sub(begin)
 	log.Printf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
 	if superseded > 0 {
@@ -398,16 +488,33 @@ func lookup() {
 			}
 			var m uint64
 			var d uint64
-			for o := 0; o < len(keys); o += 16 {
-				timestamp, _, err := opts.vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-				if err == valuestore.ErrNotFound {
-					if timestamp == 0 {
-						m++
-					} else {
-						d++
+			if opts.GroupStore {
+				gs := opts.store.(valuestore.GroupStore)
+				for o := 0; o < len(keys); o += 16 {
+					timestamp, _, err := gs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					if err == valuestore.ErrNotFound {
+						if timestamp == 0 {
+							m++
+						} else {
+							d++
+						}
+					} else if err != nil {
+						panic(err)
 					}
-				} else if err != nil {
-					panic(err)
+				}
+			} else {
+				vs := opts.store.(valuestore.ValueStore)
+				for o := 0; o < len(keys); o += 16 {
+					timestamp, _, err := vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					if err == valuestore.ErrNotFound {
+						if timestamp == 0 {
+							m++
+						} else {
+							d++
+						}
+					} else if err != nil {
+						panic(err)
+					}
 				}
 			}
 			if m > 0 {
@@ -446,22 +553,45 @@ func read() {
 				var vl uint64
 				var m uint64
 				var d uint64
-				for o := 0; o < len(keys); o += 16 {
-					timestamp, v, err := opts.vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-					if err == valuestore.ErrNotFound {
-						if timestamp == 0 {
-							m++
+				if opts.GroupStore {
+					gs := opts.store.(valuestore.GroupStore)
+					for o := 0; o < len(keys); o += 16 {
+						timestamp, v, err := gs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
+						if err == valuestore.ErrNotFound {
+							if timestamp == 0 {
+								m++
+							} else {
+								d++
+							}
+						} else if err != nil {
+							panic(err)
+						} else if len(v) > 10 && !bytes.Equal(v[:10], start) {
+							panic("bad start to value")
+						} else if len(v) > 20 && !bytes.Equal(v[len(v)-10:], stop) {
+							panic("bad stop to value")
 						} else {
-							d++
+							vl += uint64(len(v))
 						}
-					} else if err != nil {
-						panic(err)
-					} else if len(v) > 10 && !bytes.Equal(v[:10], start) {
-						panic("bad start to value")
-					} else if len(v) > 20 && !bytes.Equal(v[len(v)-10:], stop) {
-						panic("bad stop to value")
-					} else {
-						vl += uint64(len(v))
+					}
+				} else {
+					vs := opts.store.(valuestore.ValueStore)
+					for o := 0; o < len(keys); o += 16 {
+						timestamp, v, err := vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
+						if err == valuestore.ErrNotFound {
+							if timestamp == 0 {
+								m++
+							} else {
+								d++
+							}
+						} else if err != nil {
+							panic(err)
+						} else if len(v) > 10 && !bytes.Equal(v[:10], start) {
+							panic("bad start to value")
+						} else if len(v) > 20 && !bytes.Equal(v[len(v)-10:], stop) {
+							panic("bad stop to value")
+						} else {
+							vl += uint64(len(v))
+						}
 					}
 				}
 				if vl > 0 {
@@ -531,14 +661,25 @@ func write() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
-			for o := 0; o < len(keys); o += 16 {
-				scr.Read(randomness)
-				// test putting all keys in a certain range:
-				// if oldTimestamp, err := opts.vs.Write(binary.BigEndian.Uint64(keys[o:]) & 0x000fffffffffffff, binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {}
-				if oldTimestamp, err := opts.vs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
-					panic(err)
-				} else if oldTimestamp > timestamp {
-					s++
+			if opts.GroupStore {
+				gs := opts.store.(valuestore.GroupStore)
+				for o := 0; o < len(keys); o += 16 {
+					scr.Read(randomness)
+					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
+						panic(err)
+					} else if oldTimestamp > timestamp {
+						s++
+					}
+				}
+			} else {
+				vs := opts.store.(valuestore.ValueStore)
+				for o := 0; o < len(keys); o += 16 {
+					scr.Read(randomness)
+					if oldTimestamp, err := vs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
+						panic(err)
+					} else if oldTimestamp > timestamp {
+						s++
+					}
 				}
 			}
 			if s > 0 {
@@ -548,7 +689,7 @@ func write() {
 		}(i)
 	}
 	wg.Wait()
-	opts.vs.Flush()
+	opts.store.Flush()
 	dur := time.Now().Sub(begin)
 	log.Printf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
 	if superseded > 0 {
