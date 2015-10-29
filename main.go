@@ -32,6 +32,7 @@ type optsStruct struct {
 	Replicate     bool  `long:"replicate" description:"Creates a second value store that will test replication."`
 	Timestamp     int64 `long:"timestamp" description:"Timestamp value. Default: current time"`
 	TombstoneAge  int   `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
+	MaxGroupSize  int   `long:"max-group-size" description:"Maximum number of items per group for groupwrite."`
 	Positional    struct {
 		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup outrep read run write"`
 	} `positional-args:"yes"`
@@ -65,6 +66,9 @@ func main() {
 		case "blockprof":
 		case "cpuprof":
 		case "delete":
+		case "grouplookup":
+		case "groupread":
+		case "groupwrite":
 		case "lookup":
 		case "outrep":
 		case "read":
@@ -109,6 +113,9 @@ func main() {
 		} else {
 			vscfg.TombstoneAge = opts.TombstoneAge
 		}
+	}
+	if opts.MaxGroupSize < 1 {
+		opts.MaxGroupSize = 100
 	}
 	wg := &sync.WaitGroup{}
 	if opts.Replicate {
@@ -257,6 +264,12 @@ func main() {
 			}
 		case "delete":
 			delete()
+		case "grouplookup":
+			grouplookup()
+		case "groupread":
+			groupread()
+		case "groupwrite":
+			groupwrite()
 		case "lookup":
 			lookup()
 		case "outrep":
@@ -464,6 +477,158 @@ func delete() {
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
 	log.Printf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
+	if superseded > 0 {
+		log.Println(superseded, "SUPERCEDED!")
+	}
+}
+
+func grouplookup() {
+	log.Print("grouplookup:")
+	if !opts.GroupStore {
+		log.Println("not valid for ValueStore")
+		return
+	}
+	var itemCount uint64
+	var mismatch uint64
+	begin := time.Now()
+	wg := &sync.WaitGroup{}
+	wg.Add(opts.Clients)
+	for i := 0; i < opts.Clients; i++ {
+		go func(client int) {
+			number := len(opts.keyspace) / 16
+			numberPer := number / opts.Clients
+			var keys []byte
+			if client == opts.Clients-1 {
+				keys = opts.keyspace[numberPer*client*16:]
+			} else {
+				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
+			}
+			gs := opts.store.(valuestore.GroupStore)
+			for o := 0; o < len(keys); o += 16 {
+				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
+				list := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				atomic.AddUint64(&itemCount, uint64(len(list)))
+				if uint64(len(list)) != groupSize {
+					atomic.AddUint64(&mismatch, 1)
+				}
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	dur := time.Now().Sub(begin)
+	log.Printf("%s %.0f/s to lookup %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	if mismatch > 0 {
+		log.Println(mismatch, "MISMATCHES! (groups without the correct number of items)")
+	}
+}
+
+func groupread() {
+	log.Print("groupread:")
+	if !opts.GroupStore {
+		log.Println("not valid for ValueStore")
+		return
+	}
+	var itemCount uint64
+	var mismatch uint64
+	begin := time.Now()
+	wg := &sync.WaitGroup{}
+	wg.Add(opts.Clients)
+	for i := 0; i < opts.Clients; i++ {
+		go func(client int) {
+			number := len(opts.keyspace) / 16
+			numberPer := number / opts.Clients
+			var keys []byte
+			if client == opts.Clients-1 {
+				keys = opts.keyspace[numberPer*client*16:]
+			} else {
+				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
+			}
+			gs := opts.store.(valuestore.GroupStore)
+			for o := 0; o < len(keys); o += 16 {
+				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
+				_, c := gs.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				items := uint64(0)
+				for _ = range c {
+					items++
+				}
+				atomic.AddUint64(&itemCount, items)
+				if items != groupSize {
+					log.Println(groupSize, items)
+					atomic.AddUint64(&mismatch, 1)
+				}
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	dur := time.Now().Sub(begin)
+	log.Printf("%s %.0f/s to read %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	if mismatch > 0 {
+		log.Println(mismatch, "MISMATCHES! (groups without the correct number of items)")
+	}
+}
+
+func groupwrite() {
+	log.Print("groupwrite:")
+	if !opts.GroupStore {
+		log.Println("not valid for ValueStore")
+		return
+	}
+	var itemCount uint64
+	var superseded uint64
+	timestamp := opts.Timestamp
+	if timestamp == 0 {
+		timestamp = 2
+	}
+	begin := time.Now()
+	wg := &sync.WaitGroup{}
+	wg.Add(opts.Clients)
+	for i := 0; i < opts.Clients; i++ {
+		go func(client int) {
+			value := make([]byte, opts.Length)
+			randomness := value
+			if len(value) > 10 {
+				copy(value, []byte("START67890"))
+				randomness = value[10:]
+				if len(value) > 20 {
+					copy(value[len(value)-10:], []byte("123456STOP"))
+					randomness = value[10 : len(value)-10]
+				}
+			}
+			scr := brimutil.NewScrambled()
+			var s uint64
+			number := len(opts.keyspace) / 16
+			numberPer := number / opts.Clients
+			var keys []byte
+			if client == opts.Clients-1 {
+				keys = opts.keyspace[numberPer*client*16:]
+			} else {
+				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
+			}
+			gs := opts.store.(valuestore.GroupStore)
+			for o := 0; o < len(keys); o += 16 {
+				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
+				atomic.AddUint64(&itemCount, groupSize)
+				for p := uint64(0); p < groupSize; p++ {
+					scr.Read(randomness)
+					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), p, p, timestamp, value); err != nil {
+						panic(err)
+					} else if oldTimestamp > timestamp {
+						s++
+					}
+				}
+			}
+			if s > 0 {
+				atomic.AddUint64(&superseded, s)
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	opts.store.Flush()
+	dur := time.Now().Sub(begin)
+	log.Printf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
 	if superseded > 0 {
 		log.Println(superseded, "SUPERCEDED!")
 	}
