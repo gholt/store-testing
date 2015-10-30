@@ -547,11 +547,7 @@ func groupread() {
 			gs := opts.store.(valuestore.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				_, c := gs.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-				items := uint64(0)
-				for _ = range c {
-					items++
-				}
+				items := uint64(len(gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))))
 				atomic.AddUint64(&itemCount, items)
 				if items != groupSize {
 					log.Println(groupSize, items)
