@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/valuestore"
+	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/gholt/brimtime.v1"
 	"gopkg.in/gholt/brimutil.v1"
@@ -43,8 +43,8 @@ type optsStruct struct {
 	keyspace   []byte
 	buffers    [][]byte
 	st         runtime.MemStats
-	store      valuestore.Store
-	repstore   valuestore.Store
+	store      store.Store
+	repstore   store.Store
 	ring       *ringPipe
 	rring      *ringPipe
 }
@@ -100,12 +100,12 @@ func main() {
 	memstat()
 	log.Print("start:")
 	begin := time.Now()
-	var vscfg *valuestore.ValueStoreConfig
-	var gscfg *valuestore.GroupStoreConfig
+	var vscfg *store.ValueStoreConfig
+	var gscfg *store.GroupStoreConfig
 	if opts.GroupStore {
-		gscfg = &valuestore.GroupStoreConfig{Workers: opts.Cores}
+		gscfg = &store.GroupStoreConfig{Workers: opts.Cores}
 	} else {
-		vscfg = &valuestore.ValueStoreConfig{Workers: opts.Cores}
+		vscfg = &store.ValueStoreConfig{Workers: opts.Cores}
 	}
 	if opts.TombstoneAge > 0 {
 		if opts.GroupStore {
@@ -122,10 +122,10 @@ func main() {
 		conn, rconn := net.Pipe()
 		opts.ring = NewRingPipe("127.0.0.1:11111", conn)
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
-		var rvscfg *valuestore.ValueStoreConfig
-		var rgscfg *valuestore.GroupStoreConfig
+		var rvscfg *store.ValueStoreConfig
+		var rgscfg *store.GroupStoreConfig
 		if opts.GroupStore {
-			rgscfg = &valuestore.GroupStoreConfig{}
+			rgscfg = &store.GroupStoreConfig{}
 			*rgscfg = *gscfg
 			gscfg.MsgRing = opts.ring
 			rgscfg.MsgRing = opts.rring
@@ -135,7 +135,7 @@ func main() {
 			rgscfg.LogWarning = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
 			rgscfg.LogInfo = log.New(os.Stdout, "ReplicatedGroupStore ", log.LstdFlags).Printf
 		} else {
-			rvscfg = &valuestore.ValueStoreConfig{}
+			rvscfg = &store.ValueStoreConfig{}
 			*rvscfg = *vscfg
 			vscfg.MsgRing = opts.ring
 			rvscfg.MsgRing = opts.rring
@@ -156,9 +156,9 @@ func main() {
 		go func() {
 			var err error
 			if opts.GroupStore {
-				opts.repstore, err = valuestore.NewGroupStore(rgscfg)
+				opts.repstore, err = store.NewGroupStore(rgscfg)
 			} else {
-				opts.repstore, err = valuestore.NewValueStore(rvscfg)
+				opts.repstore, err = store.NewValueStore(rvscfg)
 			}
 			if err != nil {
 				panic(err)
@@ -187,9 +187,9 @@ func main() {
 	}
 	var err error
 	if opts.GroupStore {
-		opts.store, err = valuestore.NewGroupStore(gscfg)
+		opts.store, err = store.NewGroupStore(gscfg)
 	} else {
-		opts.store, err = valuestore.NewValueStore(vscfg)
+		opts.store, err = store.NewValueStore(vscfg)
 	}
 	if err != nil {
 		panic(err)
@@ -312,25 +312,25 @@ func main() {
 	memstat()
 	log.Print("stats:")
 	begin = time.Now()
-	var rvsStats *valuestore.ValueStoreStats
-	var rgsStats *valuestore.GroupStoreStats
+	var rvsStats *store.ValueStoreStats
+	var rgsStats *store.GroupStoreStats
 	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
 			if opts.GroupStore {
-				rgsStats = opts.repstore.Stats(opts.ExtendedStats).(*valuestore.GroupStoreStats)
+				rgsStats = opts.repstore.Stats(opts.ExtendedStats).(*store.GroupStoreStats)
 			} else {
-				rvsStats = opts.repstore.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+				rvsStats = opts.repstore.Stats(opts.ExtendedStats).(*store.ValueStoreStats)
 			}
 			wg.Done()
 		}()
 	}
-	var vsStats *valuestore.ValueStoreStats
-	var gsStats *valuestore.GroupStoreStats
+	var vsStats *store.ValueStoreStats
+	var gsStats *store.GroupStoreStats
 	if opts.GroupStore {
-		gsStats = opts.store.Stats(opts.ExtendedStats).(*valuestore.GroupStoreStats)
+		gsStats = opts.store.Stats(opts.ExtendedStats).(*store.GroupStoreStats)
 	} else {
-		vsStats = opts.store.Stats(opts.ExtendedStats).(*valuestore.ValueStoreStats)
+		vsStats = opts.store.Stats(opts.ExtendedStats).(*store.ValueStoreStats)
 	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
@@ -449,7 +449,7 @@ func delete() {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
 			if opts.GroupStore {
-				gs := opts.store.(valuestore.GroupStore)
+				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					if oldTimestamp, err := gs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
 						panic(err)
@@ -458,7 +458,7 @@ func delete() {
 					}
 				}
 			} else {
-				vs := opts.store.(valuestore.ValueStore)
+				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
 					if oldTimestamp, err := vs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
 						panic(err)
@@ -503,7 +503,7 @@ func grouplookup() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
-			gs := opts.store.(valuestore.GroupStore)
+			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				list := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
@@ -544,7 +544,7 @@ func groupread() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
-			gs := opts.store.(valuestore.GroupStore)
+			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				items := uint64(len(gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))))
@@ -602,7 +602,7 @@ func groupwrite() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
-			gs := opts.store.(valuestore.GroupStore)
+			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				atomic.AddUint64(&itemCount, groupSize)
@@ -650,10 +650,10 @@ func lookup() {
 			var m uint64
 			var d uint64
 			if opts.GroupStore {
-				gs := opts.store.(valuestore.GroupStore)
+				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					timestamp, _, err := gs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-					if err == valuestore.ErrNotFound {
+					if err == store.ErrNotFound {
 						if timestamp == 0 {
 							m++
 						} else {
@@ -664,10 +664,10 @@ func lookup() {
 					}
 				}
 			} else {
-				vs := opts.store.(valuestore.ValueStore)
+				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
 					timestamp, _, err := vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-					if err == valuestore.ErrNotFound {
+					if err == store.ErrNotFound {
 						if timestamp == 0 {
 							m++
 						} else {
@@ -715,10 +715,10 @@ func read() {
 				var m uint64
 				var d uint64
 				if opts.GroupStore {
-					gs := opts.store.(valuestore.GroupStore)
+					gs := opts.store.(store.GroupStore)
 					for o := 0; o < len(keys); o += 16 {
 						timestamp, v, err := gs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-						if err == valuestore.ErrNotFound {
+						if err == store.ErrNotFound {
 							if timestamp == 0 {
 								m++
 							} else {
@@ -735,10 +735,10 @@ func read() {
 						}
 					}
 				} else {
-					vs := opts.store.(valuestore.ValueStore)
+					vs := opts.store.(store.ValueStore)
 					for o := 0; o < len(keys); o += 16 {
 						timestamp, v, err := vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-						if err == valuestore.ErrNotFound {
+						if err == store.ErrNotFound {
 							if timestamp == 0 {
 								m++
 							} else {
@@ -823,7 +823,7 @@ func write() {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
 			if opts.GroupStore {
-				gs := opts.store.(valuestore.GroupStore)
+				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					scr.Read(randomness)
 					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
@@ -833,7 +833,7 @@ func write() {
 					}
 				}
 			} else {
-				vs := opts.store.(valuestore.ValueStore)
+				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
 					scr.Read(randomness)
 					if oldTimestamp, err := vs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {

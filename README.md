@@ -1,7 +1,7 @@
-# ValueStore Testing
+# Store Testing
 ## Development Repository
 
-Just a dev area for [valuestore](http://github.com/gholt/valuestore) testing.
+Just a dev area for [store](http://github.com/gholt/store) testing.
 
 > Copyright See AUTHORS. All rights reserved.  
 > Use of this source code is governed by a BSD-style  
