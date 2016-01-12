@@ -155,14 +155,20 @@ func main() {
 		wg.Add(1)
 		go func() {
 			var err error
+			var restartChan chan error
 			if opts.GroupStore {
-				opts.repstore, err = store.NewGroupStore(rgscfg)
+				opts.repstore, restartChan, err = store.NewGroupStore(rgscfg)
 			} else {
-				opts.repstore, err = store.NewValueStore(rvscfg)
+				opts.repstore, restartChan, err = store.NewValueStore(rvscfg)
 			}
 			if err != nil {
 				panic(err)
 			}
+			go func(restartChan chan error) {
+				if err := <-restartChan; err != nil {
+					panic(err)
+				}
+			}(restartChan)
 			if opts.Metrics {
 				go func() {
 					for {
@@ -186,14 +192,20 @@ func main() {
 		}
 	}
 	var err error
+	var restartChan chan error
 	if opts.GroupStore {
-		opts.store, err = store.NewGroupStore(gscfg)
+		opts.store, restartChan, err = store.NewGroupStore(gscfg)
 	} else {
-		opts.store, err = store.NewValueStore(vscfg)
+		opts.store, restartChan, err = store.NewValueStore(vscfg)
 	}
 	if err != nil {
 		panic(err)
 	}
+	go func(restartChan chan error) {
+		if err := <-restartChan; err != nil {
+			panic(err)
+		}
+	}(restartChan)
 	if opts.Metrics {
 		go func() {
 			for {
