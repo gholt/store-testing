@@ -34,7 +34,7 @@ type optsStruct struct {
 	TombstoneAge  int   `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
 	MaxGroupSize  int   `long:"max-group-size" description:"Maximum number of items per group for groupwrite."`
 	Positional    struct {
-		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup outrep read run write"`
+		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup read run write"`
 	} `positional-args:"yes"`
 	blockprofi int
 	blockproff *os.File
@@ -70,7 +70,6 @@ func main() {
 		case "groupread":
 		case "groupwrite":
 		case "lookup":
-		case "outrep":
 		case "read":
 		case "run":
 		case "write":
@@ -154,15 +153,11 @@ func main() {
 		}
 		wg.Add(1)
 		go func() {
-			var err error
 			var restartChan chan error
 			if opts.GroupStore {
-				opts.repstore, restartChan, err = store.NewGroupStore(rgscfg)
+				opts.repstore, restartChan = store.NewGroupStore(rgscfg)
 			} else {
-				opts.repstore, restartChan, err = store.NewValueStore(rvscfg)
-			}
-			if err != nil {
-				panic(err)
+				opts.repstore, restartChan = store.NewValueStore(rvscfg)
 			}
 			go func(restartChan chan error) {
 				if err := <-restartChan; err != nil {
@@ -191,15 +186,11 @@ func main() {
 			vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
 		}
 	}
-	var err error
 	var restartChan chan error
 	if opts.GroupStore {
-		opts.store, restartChan, err = store.NewGroupStore(gscfg)
+		opts.store, restartChan = store.NewGroupStore(gscfg)
 	} else {
-		opts.store, restartChan, err = store.NewValueStore(vscfg)
-	}
-	if err != nil {
-		panic(err)
+		opts.store, restartChan = store.NewValueStore(vscfg)
 	}
 	go func(restartChan chan error) {
 		if err := <-restartChan; err != nil {
@@ -224,13 +215,17 @@ func main() {
 		opts.rring.Start()
 		wg.Add(1)
 		go func() {
-			opts.repstore.EnableAll()
+			if err := opts.repstore.Startup(); err != nil {
+				panic(err)
+			}
 			wg.Done()
 		}()
 	}
 	wg.Add(1)
 	go func() {
-		opts.store.EnableAll()
+		if err := opts.store.Startup(); err != nil {
+			panic(err)
+		}
 		wg.Done()
 	}()
 	wg.Wait()
@@ -284,8 +279,6 @@ func main() {
 			groupwrite()
 		case "lookup":
 			lookup()
-		case "outrep":
-			outrep()
 		case "read":
 			read()
 		case "run":
@@ -306,21 +299,19 @@ func main() {
 		opts.cpuproff.Close()
 		opts.cpuproff = nil
 	}
-	log.Print("close:")
+	log.Print("flush:")
 	begin = time.Now()
 	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.repstore.DisableAll()
 			opts.repstore.Flush()
 			wg.Done()
 		}()
 	}
-	opts.store.DisableAll()
 	opts.store.Flush()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to close")
+	log.Println(dur, "to flush")
 	memstat()
 	log.Print("stats:")
 	begin = time.Now()
@@ -383,6 +374,19 @@ func main() {
 	if opts.repstore != nil {
 		log.Print("drops", opts.ring.sendDrops, opts.rring.sendDrops)
 	}
+	log.Print("shutdown:")
+	begin = time.Now()
+	if opts.repstore != nil {
+		wg.Add(1)
+		go func() {
+			opts.repstore.Shutdown()
+			wg.Done()
+		}()
+	}
+	opts.store.Shutdown()
+	wg.Wait()
+	dur = time.Now().Sub(begin)
+	log.Println(dur, "to shutdown")
 }
 
 func memstat() {
@@ -391,55 +395,6 @@ func memstat() {
 	deltaAlloc := opts.st.TotalAlloc - lastAlloc
 	lastAlloc = opts.st.TotalAlloc
 	log.Printf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
-}
-
-func outrep() {
-	log.Print("disabling background tasks:")
-	begin := time.Now()
-	wg := &sync.WaitGroup{}
-	if opts.repstore != nil {
-		wg.Add(1)
-		go func() {
-			opts.repstore.DisableAllBackground()
-			wg.Done()
-		}()
-	}
-	opts.store.DisableAllBackground()
-	wg.Wait()
-	dur := time.Now().Sub(begin)
-	log.Println(dur, "to disable background tasks")
-	log.Print("background tasks:")
-	begin = time.Now()
-	if opts.repstore != nil {
-		wg.Add(1)
-		go func() {
-			opts.repstore.OutPullReplicationPass()
-			opts.repstore.OutPushReplicationPass()
-			wg.Done()
-		}()
-	}
-	opts.store.OutPullReplicationPass()
-	opts.store.OutPushReplicationPass()
-	wg.Wait()
-	dur = time.Now().Sub(begin)
-	log.Println(dur, "to run outgoing replication")
-	log.Print("re-enabling background tasks:")
-	begin = time.Now()
-	if opts.repstore != nil {
-		wg.Add(1)
-		go func() {
-			opts.repstore.EnableAll()
-			wg.Done()
-		}()
-	}
-	wg.Add(1)
-	go func() {
-		opts.store.EnableAll()
-		wg.Done()
-	}()
-	wg.Wait()
-	dur = time.Now().Sub(begin)
-	log.Println(dur, "to re-enable background tasks")
 }
 
 func delete() {
