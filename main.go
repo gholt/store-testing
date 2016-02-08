@@ -131,8 +131,6 @@ func main() {
 			rgscfg.Path = "replicated"
 			rgscfg.LogCritical = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
 			rgscfg.LogError = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
-			rgscfg.LogWarning = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
-			rgscfg.LogInfo = log.New(os.Stdout, "ReplicatedGroupStore ", log.LstdFlags).Printf
 		} else {
 			rvscfg = &store.ValueStoreConfig{}
 			*rvscfg = *vscfg
@@ -141,8 +139,6 @@ func main() {
 			rvscfg.Path = "replicated"
 			rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
 			rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-			rvscfg.LogWarning = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-			rvscfg.LogInfo = log.New(os.Stdout, "ReplicatedValueStore ", log.LstdFlags).Printf
 		}
 		if opts.Debug {
 			if opts.GroupStore {
