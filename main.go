@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"runtime"
@@ -13,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gholt/simplelogger"
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/gholt/brimtime.v1"
@@ -52,8 +52,10 @@ type optsStruct struct {
 var opts optsStruct
 var parser = flags.NewParser(&opts, flags.Default)
 
+var tlogger = simplelogger.New("store-testing", os.Stdout, os.Stderr)
+
 func main() {
-	log.Print("init:")
+	tlogger.DebugPrintf("init:")
 	args := os.Args[1:]
 	if len(args) == 0 {
 		args = append(args, "-h")
@@ -74,7 +76,7 @@ func main() {
 		case "run":
 		case "write":
 		default:
-			log.Printf("unknown test named %#v", arg)
+			tlogger.CriticalPrintf("unknown test named %#v", arg)
 			os.Exit(1)
 		}
 	}
@@ -97,14 +99,25 @@ func main() {
 		opts.buffers[i] = make([]byte, 4*1024*1024)
 	}
 	memstat()
-	log.Print("start:")
+	tlogger.DebugPrintf("start:")
 	begin := time.Now()
 	var vscfg *store.ValueStoreConfig
 	var gscfg *store.GroupStoreConfig
+	var logger *simplelogger.SimpleLogger
 	if opts.GroupStore {
-		gscfg = &store.GroupStoreConfig{Workers: opts.Cores}
+		logger = simplelogger.New("group-store", os.Stdout, os.Stderr)
+		gscfg = &store.GroupStoreConfig{
+			Workers:     opts.Cores,
+			LogCritical: logger.CriticalPrintf,
+			LogError:    logger.ErrorPrintf,
+		}
 	} else {
-		vscfg = &store.ValueStoreConfig{Workers: opts.Cores}
+		logger = simplelogger.New("value-store", os.Stdout, os.Stderr)
+		vscfg = &store.ValueStoreConfig{
+			Workers:     opts.Cores,
+			LogCritical: logger.CriticalPrintf,
+			LogError:    logger.ErrorPrintf,
+		}
 	}
 	if opts.TombstoneAge > 0 {
 		if opts.GroupStore {
@@ -123,28 +136,31 @@ func main() {
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
 		var rvscfg *store.ValueStoreConfig
 		var rgscfg *store.GroupStoreConfig
+		var rlogger *simplelogger.SimpleLogger
 		if opts.GroupStore {
 			rgscfg = &store.GroupStoreConfig{}
 			*rgscfg = *gscfg
 			gscfg.MsgRing = opts.ring
 			rgscfg.MsgRing = opts.rring
 			rgscfg.Path = "replicated"
-			rgscfg.LogCritical = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
-			rgscfg.LogError = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+			rlogger = simplelogger.New("replicated-group-store", os.Stdout, os.Stderr)
+			rgscfg.LogCritical = rlogger.CriticalPrintf
+			rgscfg.LogError = rlogger.ErrorPrintf
 		} else {
 			rvscfg = &store.ValueStoreConfig{}
 			*rvscfg = *vscfg
 			vscfg.MsgRing = opts.ring
 			rvscfg.MsgRing = opts.rring
 			rvscfg.Path = "replicated"
-			rvscfg.LogCritical = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
-			rvscfg.LogError = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+			rlogger = simplelogger.New("replicated-value-store", os.Stdout, os.Stderr)
+			rvscfg.LogCritical = rlogger.CriticalPrintf
+			rvscfg.LogError = rlogger.ErrorPrintf
 		}
 		if opts.Debug {
 			if opts.GroupStore {
-				rgscfg.LogDebug = log.New(os.Stderr, "ReplicatedGroupStore ", log.LstdFlags).Printf
+				rgscfg.LogDebug = rlogger.DebugPrintf
 			} else {
-				rvscfg.LogDebug = log.New(os.Stderr, "ReplicatedValueStore ", log.LstdFlags).Printf
+				rvscfg.LogDebug = rlogger.DebugPrintf
 			}
 		}
 		wg.Add(1)
@@ -164,11 +180,7 @@ func main() {
 				go func() {
 					for {
 						time.Sleep(60 * time.Second)
-						if opts.GroupStore {
-							log.Println("ReplicatedGroupStore:\n" + opts.repstore.Stats(false).String())
-						} else {
-							log.Println("ReplicatedValueStore:\n" + opts.repstore.Stats(false).String())
-						}
+						rlogger.DebugPrintf("%s", opts.repstore.Stats(false).String())
 					}
 				}()
 			}
@@ -177,9 +189,9 @@ func main() {
 	}
 	if opts.Debug {
 		if opts.GroupStore {
-			gscfg.LogDebug = log.New(os.Stderr, "GroupStore ", log.LstdFlags).Printf
+			gscfg.LogDebug = logger.DebugPrintf
 		} else {
-			vscfg.LogDebug = log.New(os.Stderr, "ValueStore ", log.LstdFlags).Printf
+			vscfg.LogDebug = logger.DebugPrintf
 		}
 	}
 	var restartChan chan error
@@ -197,11 +209,7 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(60 * time.Second)
-				if opts.GroupStore {
-					log.Println("GroupStore:\n" + opts.store.Stats(false).String())
-				} else {
-					log.Println("ValueStore:\n" + opts.store.Stats(false).String())
-				}
+				logger.DebugPrintf("%s", opts.store.Stats(false).String())
 			}
 		}()
 	}
@@ -226,41 +234,41 @@ func main() {
 	}()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	log.Println(dur, "to start")
+	tlogger.DebugPrintf("%s to start", dur)
 	memstat()
 	for _, arg := range opts.Positional.Tests {
 		switch arg {
 		case "blockprof":
 			if opts.blockproff != nil {
-				log.Print("blockprof: off")
+				tlogger.DebugPrintf("blockprof: off")
 				runtime.SetBlockProfileRate(0)
 				pprof.Lookup("block").WriteTo(opts.blockproff, 1)
 				opts.blockproff.Close()
 				opts.blockproff = nil
 			} else {
-				log.Print("blockprof: on")
+				tlogger.DebugPrintf("blockprof: on")
 				var err error
 				opts.blockproff, err = os.Create(fmt.Sprintf("blockprof%d", opts.blockprofi))
 				opts.blockprofi++
 				if err != nil {
-					log.Print(err)
+					tlogger.CriticalPrintf("%s", err)
 					os.Exit(1)
 				}
 				runtime.SetBlockProfileRate(1)
 			}
 		case "cpuprof":
 			if opts.cpuproff != nil {
-				log.Print("cpuprof: off")
+				tlogger.DebugPrintf("cpuprof: off")
 				pprof.StopCPUProfile()
 				opts.cpuproff.Close()
 				opts.cpuproff = nil
 			} else {
-				log.Print("cpuprof: on")
+				tlogger.DebugPrintf("cpuprof: on")
 				var err error
 				opts.cpuproff, err = os.Create(fmt.Sprintf("cpuprof%d", opts.cpuprofi))
 				opts.cpuprofi++
 				if err != nil {
-					log.Print(err)
+					tlogger.CriticalPrintf("%s", err)
 					os.Exit(1)
 				}
 				pprof.StartCPUProfile(opts.cpuproff)
@@ -295,7 +303,7 @@ func main() {
 		opts.cpuproff.Close()
 		opts.cpuproff = nil
 	}
-	log.Print("flush:")
+	tlogger.DebugPrintf("flush:")
 	begin = time.Now()
 	if opts.repstore != nil {
 		wg.Add(1)
@@ -307,9 +315,9 @@ func main() {
 	opts.store.Flush()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to flush")
+	tlogger.DebugPrintf("%s to flush", dur)
 	memstat()
-	log.Print("stats:")
+	tlogger.DebugPrintf("stats:")
 	begin = time.Now()
 	var rvsStats *store.ValueStoreStats
 	var rgsStats *store.GroupStoreStats
@@ -333,44 +341,44 @@ func main() {
 	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to obtain stats")
+	tlogger.DebugPrintf("%s to obtain stats", dur)
 	if opts.ExtendedStats {
 		if opts.GroupStore {
-			log.Print("GroupStore: stats:\n", gsStats.String())
+			tlogger.DebugPrintf("GroupStore: stats:\n", gsStats.String())
 		} else {
-			log.Print("ValueStore: stats:\n", vsStats.String())
+			tlogger.DebugPrintf("ValueStore: stats:\n", vsStats.String())
 		}
 	} else {
 		if opts.GroupStore {
-			log.Println("GroupStore: Values", gsStats.Values)
-			log.Println("GroupStore: ValueBytes", gsStats.ValueBytes)
+			tlogger.DebugPrintf("GroupStore: Values", gsStats.Values)
+			tlogger.DebugPrintf("GroupStore: ValueBytes", gsStats.ValueBytes)
 		} else {
-			log.Println("ValueStore: Values", vsStats.Values)
-			log.Println("ValueStore: ValueBytes", vsStats.ValueBytes)
+			tlogger.DebugPrintf("ValueStore: Values", vsStats.Values)
+			tlogger.DebugPrintf("ValueStore: ValueBytes", vsStats.ValueBytes)
 		}
 	}
 	if opts.repstore != nil {
 		if opts.ExtendedStats {
 			if opts.GroupStore {
-				log.Print("ReplicatedGroupStore: stats:\n", rgsStats.String())
+				tlogger.DebugPrintf("ReplicatedGroupStore: stats:\n", rgsStats.String())
 			} else {
-				log.Print("ReplicatedValueStore: stats:\n", rvsStats.String())
+				tlogger.DebugPrintf("ReplicatedValueStore: stats:\n", rvsStats.String())
 			}
 		} else {
 			if opts.GroupStore {
-				log.Println("ReplicatedGroupStore: Values", rgsStats.Values)
-				log.Println("ReplicatedGroupStore: ValueBytes", rgsStats.ValueBytes)
+				tlogger.DebugPrintf("ReplicatedGroupStore: Values", rgsStats.Values)
+				tlogger.DebugPrintf("ReplicatedGroupStore: ValueBytes", rgsStats.ValueBytes)
 			} else {
-				log.Println("ReplicatedValueStore: Values", rvsStats.Values)
-				log.Println("ReplicatedValueStore: ValueBytes", rvsStats.ValueBytes)
+				tlogger.DebugPrintf("ReplicatedValueStore: Values", rvsStats.Values)
+				tlogger.DebugPrintf("ReplicatedValueStore: ValueBytes", rvsStats.ValueBytes)
 			}
 		}
 	}
 	memstat()
 	if opts.repstore != nil {
-		log.Print("drops", opts.ring.sendDrops, opts.rring.sendDrops)
+		tlogger.DebugPrintf("drops", opts.ring.sendDrops, opts.rring.sendDrops)
 	}
-	log.Print("shutdown:")
+	tlogger.DebugPrintf("shutdown:")
 	begin = time.Now()
 	if opts.repstore != nil {
 		wg.Add(1)
@@ -382,7 +390,7 @@ func main() {
 	opts.store.Shutdown()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	log.Println(dur, "to shutdown")
+	tlogger.DebugPrintf("%s to shutdown", dur)
 }
 
 func memstat() {
@@ -390,11 +398,11 @@ func memstat() {
 	runtime.ReadMemStats(&opts.st)
 	deltaAlloc := opts.st.TotalAlloc - lastAlloc
 	lastAlloc = opts.st.TotalAlloc
-	log.Printf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
+	tlogger.DebugPrintf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
 }
 
 func delete() {
-	log.Print("delete:")
+	tlogger.DebugPrintf("delete:")
 	var superseded uint64
 	timestamp := opts.Timestamp | 1
 	begin := time.Now()
@@ -439,16 +447,16 @@ func delete() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
+	tlogger.DebugPrintf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
 	if superseded > 0 {
-		log.Println(superseded, "SUPERCEDED!")
+		tlogger.DebugPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func grouplookup() {
-	log.Print("grouplookup:")
+	tlogger.DebugPrintf("grouplookup:")
 	if !opts.GroupStore {
-		log.Println("not valid for ValueStore")
+		tlogger.CriticalPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -480,16 +488,16 @@ func grouplookup() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s to lookup %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	tlogger.DebugPrintf("%s %.0f/s to lookup %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
 	if mismatch > 0 {
-		log.Println(mismatch, "MISMATCHES! (groups without the correct number of items)")
+		tlogger.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
 	}
 }
 
 func groupread() {
-	log.Print("groupread:")
+	tlogger.DebugPrintf("groupread:")
 	if !opts.GroupStore {
-		log.Println("not valid for ValueStore")
+		tlogger.ErrorPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -513,7 +521,7 @@ func groupread() {
 				items := uint64(len(gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))))
 				atomic.AddUint64(&itemCount, items)
 				if items != groupSize {
-					log.Println(groupSize, items)
+					tlogger.ErrorPrintf("%d, %d", groupSize, items)
 					atomic.AddUint64(&mismatch, 1)
 				}
 			}
@@ -522,16 +530,16 @@ func groupread() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s to read %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	tlogger.DebugPrintf("%s %.0f/s to read %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
 	if mismatch > 0 {
-		log.Println(mismatch, "MISMATCHES! (groups without the correct number of items)")
+		tlogger.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
 	}
 }
 
 func groupwrite() {
-	log.Print("groupwrite:")
+	tlogger.DebugPrintf("groupwrite:")
 	if !opts.GroupStore {
-		log.Println("not valid for ValueStore")
+		tlogger.ErrorPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -587,14 +595,14 @@ func groupwrite() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
+	tlogger.DebugPrintf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
 	if superseded > 0 {
-		log.Println(superseded, "SUPERCEDED!")
+		tlogger.ErrorPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func lookup() {
-	log.Print("lookup:")
+	tlogger.DebugPrintf("lookup:")
 	var missing uint64
 	var deleted uint64
 	begin := time.Now()
@@ -652,17 +660,17 @@ func lookup() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s to lookup %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number)
+	tlogger.DebugPrintf("%s %.0f/s to lookup %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number)
 	if missing > 0 {
-		log.Println(missing, "MISSING!")
+		tlogger.ErrorPrintf("%d MISSING!", missing)
 	}
 	if deleted > 0 {
-		log.Println(deleted, "DELETED!")
+		tlogger.ErrorPrintf("%d DELETED!", deleted)
 	}
 }
 
 func read() {
-	log.Print("read:")
+	tlogger.DebugPrintf("read:")
 	var valuesLength uint64
 	var missing uint64
 	var deleted uint64
@@ -744,17 +752,17 @@ func read() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s %0.2fG/s to read %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(valuesLength)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number)
+	tlogger.DebugPrintf("%s %.0f/s %0.2fG/s to read %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(valuesLength)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number)
 	if missing > 0 {
-		log.Println(missing, "MISSING!")
+		tlogger.ErrorPrintf("%d MISSING!", missing)
 	}
 	if deleted > 0 {
-		log.Println(deleted, "DELETED!")
+		tlogger.ErrorPrintf("%d DELETED!", deleted)
 	}
 }
 
 func write() {
-	log.Print("write:")
+	tlogger.DebugPrintf("write:")
 	var superseded uint64
 	timestamp := opts.Timestamp
 	if timestamp == 0 {
@@ -815,16 +823,16 @@ func write() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	log.Printf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
+	tlogger.DebugPrintf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
 	if superseded > 0 {
-		log.Println(superseded, "SUPERCEDED!")
+		tlogger.ErrorPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func run() {
-	log.Print("run:")
+	tlogger.DebugPrintf("run:")
 	begin := time.Now()
 	<-time.After(1 * time.Minute)
 	dur := time.Now().Sub(begin)
-	log.Println(dur, "to run")
+	tlogger.DebugPrintf("%s to run", dur)
 }
