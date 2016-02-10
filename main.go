@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gholt/simplelogger"
+	"github.com/gholt/flog"
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/gholt/brimtime.v1"
@@ -52,7 +52,7 @@ type optsStruct struct {
 var opts optsStruct
 var parser = flags.NewParser(&opts, flags.Default)
 
-var tlogger = simplelogger.New("store-testing", os.Stdout, os.Stderr)
+var tlogger = flog.New("store-testing", os.Stderr, os.Stderr, os.Stderr, os.Stdout, nil)
 
 func main() {
 	tlogger.DebugPrintf("init:")
@@ -103,16 +103,16 @@ func main() {
 	begin := time.Now()
 	var vscfg *store.ValueStoreConfig
 	var gscfg *store.GroupStoreConfig
-	var logger *simplelogger.SimpleLogger
+	var logger flog.Flog
 	if opts.GroupStore {
-		logger = simplelogger.New("group-store", os.Stdout, os.Stderr)
+		logger = flog.New("group-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
 		gscfg = &store.GroupStoreConfig{
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
 			LogError:    logger.ErrorPrintf,
 		}
 	} else {
-		logger = simplelogger.New("value-store", os.Stdout, os.Stderr)
+		logger = flog.New("value-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
 		vscfg = &store.ValueStoreConfig{
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
@@ -136,14 +136,14 @@ func main() {
 		opts.rring = NewRingPipe("127.0.0.1:22222", rconn)
 		var rvscfg *store.ValueStoreConfig
 		var rgscfg *store.GroupStoreConfig
-		var rlogger *simplelogger.SimpleLogger
+		var rlogger flog.Flog
 		if opts.GroupStore {
 			rgscfg = &store.GroupStoreConfig{}
 			*rgscfg = *gscfg
 			gscfg.MsgRing = opts.ring
 			rgscfg.MsgRing = opts.rring
 			rgscfg.Path = "replicated"
-			rlogger = simplelogger.New("replicated-group-store", os.Stdout, os.Stderr)
+			rlogger = flog.New("replicated-group-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
 			rgscfg.LogCritical = rlogger.CriticalPrintf
 			rgscfg.LogError = rlogger.ErrorPrintf
 		} else {
@@ -152,7 +152,7 @@ func main() {
 			vscfg.MsgRing = opts.ring
 			rvscfg.MsgRing = opts.rring
 			rvscfg.Path = "replicated"
-			rlogger = simplelogger.New("replicated-value-store", os.Stdout, os.Stderr)
+			rlogger = flog.New("replicated-value-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
 			rvscfg.LogCritical = rlogger.CriticalPrintf
 			rvscfg.LogError = rlogger.ErrorPrintf
 		}
