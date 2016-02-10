@@ -344,33 +344,33 @@ func main() {
 	tlogger.DebugPrintf("%s to obtain stats", dur)
 	if opts.ExtendedStats {
 		if opts.GroupStore {
-			tlogger.DebugPrintf("GroupStore: stats:\n", gsStats.String())
+			tlogger.DebugPrintf("GroupStore: stats:\n%s", gsStats.String())
 		} else {
-			tlogger.DebugPrintf("ValueStore: stats:\n", vsStats.String())
+			tlogger.DebugPrintf("ValueStore: stats:\n%s", vsStats.String())
 		}
 	} else {
 		if opts.GroupStore {
-			tlogger.DebugPrintf("GroupStore: Values", gsStats.Values)
-			tlogger.DebugPrintf("GroupStore: ValueBytes", gsStats.ValueBytes)
+			tlogger.DebugPrintf("GroupStore: Values: %d", gsStats.Values)
+			tlogger.DebugPrintf("GroupStore: ValueBytes: %d", gsStats.ValueBytes)
 		} else {
-			tlogger.DebugPrintf("ValueStore: Values", vsStats.Values)
-			tlogger.DebugPrintf("ValueStore: ValueBytes", vsStats.ValueBytes)
+			tlogger.DebugPrintf("ValueStore: Values: %d", vsStats.Values)
+			tlogger.DebugPrintf("ValueStore: ValueBytes: %d", vsStats.ValueBytes)
 		}
 	}
 	if opts.repstore != nil {
 		if opts.ExtendedStats {
 			if opts.GroupStore {
-				tlogger.DebugPrintf("ReplicatedGroupStore: stats:\n", rgsStats.String())
+				tlogger.DebugPrintf("ReplicatedGroupStore: stats:\n%s", rgsStats.String())
 			} else {
-				tlogger.DebugPrintf("ReplicatedValueStore: stats:\n", rvsStats.String())
+				tlogger.DebugPrintf("ReplicatedValueStore: stats:\n%s", rvsStats.String())
 			}
 		} else {
 			if opts.GroupStore {
-				tlogger.DebugPrintf("ReplicatedGroupStore: Values", rgsStats.Values)
-				tlogger.DebugPrintf("ReplicatedGroupStore: ValueBytes", rgsStats.ValueBytes)
+				tlogger.DebugPrintf("ReplicatedGroupStore: Values: %d", rgsStats.Values)
+				tlogger.DebugPrintf("ReplicatedGroupStore: ValueBytes: %d", rgsStats.ValueBytes)
 			} else {
-				tlogger.DebugPrintf("ReplicatedValueStore: Values", rvsStats.Values)
-				tlogger.DebugPrintf("ReplicatedValueStore: ValueBytes", rvsStats.ValueBytes)
+				tlogger.DebugPrintf("ReplicatedValueStore: Values: %d", rvsStats.Values)
+				tlogger.DebugPrintf("ReplicatedValueStore: ValueBytes: %d", rvsStats.ValueBytes)
 			}
 		}
 	}
