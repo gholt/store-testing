@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"runtime"
@@ -52,10 +53,7 @@ type optsStruct struct {
 var opts optsStruct
 var parser = flags.NewParser(&opts, flags.Default)
 
-var tlogger = flog.New("store-testing", os.Stderr, os.Stderr, os.Stderr, os.Stdout, nil)
-
 func main() {
-	tlogger.InfoPrintf("init:")
 	args := os.Args[1:]
 	if len(args) == 0 {
 		args = append(args, "-h")
@@ -63,6 +61,18 @@ func main() {
 	if _, err := parser.ParseArgs(args); err != nil {
 		os.Exit(1)
 	}
+	var debugWriter io.Writer = flog.NilWriter
+	if opts.Debug {
+		debugWriter = os.Stdout
+	}
+	flog.Default = flog.New(&flog.Config{
+		CriticalWriter: os.Stderr,
+		ErrorWriter:    os.Stderr,
+		WarningWriter:  os.Stderr,
+		InfoWriter:     os.Stdout,
+		DebugWriter:    debugWriter,
+	})
+	flog.InfoPrintf("init:")
 	for _, arg := range opts.Positional.Tests {
 		switch arg {
 		case "blockprof":
@@ -76,7 +86,7 @@ func main() {
 		case "run":
 		case "write":
 		default:
-			tlogger.CriticalPrintf("unknown test named %#v", arg)
+			flog.CriticalPrintf("unknown test named %#v", arg)
 			os.Exit(1)
 		}
 	}
@@ -99,20 +109,20 @@ func main() {
 		opts.buffers[i] = make([]byte, 4*1024*1024)
 	}
 	memstat()
-	tlogger.InfoPrintf("start:")
+	flog.InfoPrintf("start:")
 	begin := time.Now()
 	var vscfg *store.ValueStoreConfig
 	var gscfg *store.GroupStoreConfig
 	var logger flog.Flog
 	if opts.GroupStore {
-		logger = flog.New("group-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
+		logger = flog.Sub(&flog.Config{Name: "group-store"})
 		gscfg = &store.GroupStoreConfig{
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
 			LogError:    logger.ErrorPrintf,
 		}
 	} else {
-		logger = flog.New("value-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
+		logger = flog.Sub(&flog.Config{Name: "value-store"})
 		vscfg = &store.ValueStoreConfig{
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
@@ -143,7 +153,7 @@ func main() {
 			gscfg.MsgRing = opts.ring
 			rgscfg.MsgRing = opts.rring
 			rgscfg.Path = "replicated"
-			rlogger = flog.New("replicated-group-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
+			rlogger = flog.Sub(&flog.Config{Name: "replicated-group-store"})
 			rgscfg.LogCritical = rlogger.CriticalPrintf
 			rgscfg.LogError = rlogger.ErrorPrintf
 		} else {
@@ -152,7 +162,7 @@ func main() {
 			vscfg.MsgRing = opts.ring
 			rvscfg.MsgRing = opts.rring
 			rvscfg.Path = "replicated"
-			rlogger = flog.New("replicated-value-store", os.Stderr, os.Stderr, os.Stderr, os.Stdout, os.Stdout)
+			rlogger = flog.Sub(&flog.Config{Name: "replicated-value-store"})
 			rvscfg.LogCritical = rlogger.CriticalPrintf
 			rvscfg.LogError = rlogger.ErrorPrintf
 		}
@@ -234,41 +244,41 @@ func main() {
 	}()
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s to start", dur)
+	flog.InfoPrintf("%s to start", dur)
 	memstat()
 	for _, arg := range opts.Positional.Tests {
 		switch arg {
 		case "blockprof":
 			if opts.blockproff != nil {
-				tlogger.InfoPrintf("blockprof: off")
+				flog.InfoPrintf("blockprof: off")
 				runtime.SetBlockProfileRate(0)
 				pprof.Lookup("block").WriteTo(opts.blockproff, 1)
 				opts.blockproff.Close()
 				opts.blockproff = nil
 			} else {
-				tlogger.InfoPrintf("blockprof: on")
+				flog.InfoPrintf("blockprof: on")
 				var err error
 				opts.blockproff, err = os.Create(fmt.Sprintf("blockprof%d", opts.blockprofi))
 				opts.blockprofi++
 				if err != nil {
-					tlogger.CriticalPrintf("%s", err)
+					flog.CriticalPrintf("%s", err)
 					os.Exit(1)
 				}
 				runtime.SetBlockProfileRate(1)
 			}
 		case "cpuprof":
 			if opts.cpuproff != nil {
-				tlogger.InfoPrintf("cpuprof: off")
+				flog.InfoPrintf("cpuprof: off")
 				pprof.StopCPUProfile()
 				opts.cpuproff.Close()
 				opts.cpuproff = nil
 			} else {
-				tlogger.InfoPrintf("cpuprof: on")
+				flog.InfoPrintf("cpuprof: on")
 				var err error
 				opts.cpuproff, err = os.Create(fmt.Sprintf("cpuprof%d", opts.cpuprofi))
 				opts.cpuprofi++
 				if err != nil {
-					tlogger.CriticalPrintf("%s", err)
+					flog.CriticalPrintf("%s", err)
 					os.Exit(1)
 				}
 				pprof.StartCPUProfile(opts.cpuproff)
@@ -303,7 +313,7 @@ func main() {
 		opts.cpuproff.Close()
 		opts.cpuproff = nil
 	}
-	tlogger.InfoPrintf("flush:")
+	flog.InfoPrintf("flush:")
 	begin = time.Now()
 	if opts.repstore != nil {
 		wg.Add(1)
@@ -315,9 +325,9 @@ func main() {
 	opts.store.Flush()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s to flush", dur)
+	flog.InfoPrintf("%s to flush", dur)
 	memstat()
-	tlogger.InfoPrintf("stats:")
+	flog.InfoPrintf("stats:")
 	begin = time.Now()
 	var rvsStats *store.ValueStoreStats
 	var rgsStats *store.GroupStoreStats
@@ -341,44 +351,44 @@ func main() {
 	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s to obtain stats", dur)
+	flog.InfoPrintf("%s to obtain stats", dur)
 	if opts.ExtendedStats {
 		if opts.GroupStore {
-			tlogger.InfoPrintf("GroupStore: stats:\n%s", gsStats.String())
+			flog.InfoPrintf("GroupStore: stats:\n%s", gsStats.String())
 		} else {
-			tlogger.InfoPrintf("ValueStore: stats:\n%s", vsStats.String())
+			flog.InfoPrintf("ValueStore: stats:\n%s", vsStats.String())
 		}
 	} else {
 		if opts.GroupStore {
-			tlogger.InfoPrintf("GroupStore: Values: %d", gsStats.Values)
-			tlogger.InfoPrintf("GroupStore: ValueBytes: %d", gsStats.ValueBytes)
+			flog.InfoPrintf("GroupStore: Values: %d", gsStats.Values)
+			flog.InfoPrintf("GroupStore: ValueBytes: %d", gsStats.ValueBytes)
 		} else {
-			tlogger.InfoPrintf("ValueStore: Values: %d", vsStats.Values)
-			tlogger.InfoPrintf("ValueStore: ValueBytes: %d", vsStats.ValueBytes)
+			flog.InfoPrintf("ValueStore: Values: %d", vsStats.Values)
+			flog.InfoPrintf("ValueStore: ValueBytes: %d", vsStats.ValueBytes)
 		}
 	}
 	if opts.repstore != nil {
 		if opts.ExtendedStats {
 			if opts.GroupStore {
-				tlogger.InfoPrintf("ReplicatedGroupStore: stats:\n%s", rgsStats.String())
+				flog.InfoPrintf("ReplicatedGroupStore: stats:\n%s", rgsStats.String())
 			} else {
-				tlogger.InfoPrintf("ReplicatedValueStore: stats:\n%s", rvsStats.String())
+				flog.InfoPrintf("ReplicatedValueStore: stats:\n%s", rvsStats.String())
 			}
 		} else {
 			if opts.GroupStore {
-				tlogger.InfoPrintf("ReplicatedGroupStore: Values: %d", rgsStats.Values)
-				tlogger.InfoPrintf("ReplicatedGroupStore: ValueBytes: %d", rgsStats.ValueBytes)
+				flog.InfoPrintf("ReplicatedGroupStore: Values: %d", rgsStats.Values)
+				flog.InfoPrintf("ReplicatedGroupStore: ValueBytes: %d", rgsStats.ValueBytes)
 			} else {
-				tlogger.InfoPrintf("ReplicatedValueStore: Values: %d", rvsStats.Values)
-				tlogger.InfoPrintf("ReplicatedValueStore: ValueBytes: %d", rvsStats.ValueBytes)
+				flog.InfoPrintf("ReplicatedValueStore: Values: %d", rvsStats.Values)
+				flog.InfoPrintf("ReplicatedValueStore: ValueBytes: %d", rvsStats.ValueBytes)
 			}
 		}
 	}
 	memstat()
 	if opts.repstore != nil {
-		tlogger.InfoPrintf("drops", opts.ring.sendDrops, opts.rring.sendDrops)
+		flog.InfoPrintf("drops %d %d", opts.ring.sendDrops, opts.rring.sendDrops)
 	}
-	tlogger.InfoPrintf("shutdown:")
+	flog.InfoPrintf("shutdown:")
 	begin = time.Now()
 	if opts.repstore != nil {
 		wg.Add(1)
@@ -390,7 +400,7 @@ func main() {
 	opts.store.Shutdown()
 	wg.Wait()
 	dur = time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s to shutdown", dur)
+	flog.InfoPrintf("%s to shutdown", dur)
 }
 
 func memstat() {
@@ -398,11 +408,11 @@ func memstat() {
 	runtime.ReadMemStats(&opts.st)
 	deltaAlloc := opts.st.TotalAlloc - lastAlloc
 	lastAlloc = opts.st.TotalAlloc
-	tlogger.InfoPrintf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
+	flog.InfoPrintf("%0.2fG total alloc, %0.2fG delta", float64(opts.st.TotalAlloc)/1024/1024/1024, float64(deltaAlloc)/1024/1024/1024)
 }
 
 func delete() {
-	tlogger.InfoPrintf("delete:")
+	flog.InfoPrintf("delete:")
 	var superseded uint64
 	timestamp := opts.Timestamp | 1
 	begin := time.Now()
@@ -447,16 +457,16 @@ func delete() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
+	flog.InfoPrintf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
 	if superseded > 0 {
-		tlogger.InfoPrintf("%d SUPERCEDED!", superseded)
+		flog.InfoPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func grouplookup() {
-	tlogger.InfoPrintf("grouplookup:")
+	flog.InfoPrintf("grouplookup:")
 	if !opts.GroupStore {
-		tlogger.CriticalPrintf("not valid for ValueStore")
+		flog.CriticalPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -488,16 +498,16 @@ func grouplookup() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s to lookup %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	flog.InfoPrintf("%s %.0f/s to lookup %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
 	if mismatch > 0 {
-		tlogger.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
+		flog.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
 	}
 }
 
 func groupread() {
-	tlogger.InfoPrintf("groupread:")
+	flog.InfoPrintf("groupread:")
 	if !opts.GroupStore {
-		tlogger.ErrorPrintf("not valid for ValueStore")
+		flog.ErrorPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -521,7 +531,7 @@ func groupread() {
 				items := uint64(len(gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))))
 				atomic.AddUint64(&itemCount, items)
 				if items != groupSize {
-					tlogger.ErrorPrintf("%d, %d", groupSize, items)
+					flog.ErrorPrintf("%d, %d", groupSize, items)
 					atomic.AddUint64(&mismatch, 1)
 				}
 			}
@@ -530,16 +540,16 @@ func groupread() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s to read %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
+	flog.InfoPrintf("%s %.0f/s to read %d groups (%d items)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, itemCount)
 	if mismatch > 0 {
-		tlogger.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
+		flog.ErrorPrintf("%d MISMATCHES! (groups without the correct number of items)", mismatch)
 	}
 }
 
 func groupwrite() {
-	tlogger.InfoPrintf("groupwrite:")
+	flog.InfoPrintf("groupwrite:")
 	if !opts.GroupStore {
-		tlogger.ErrorPrintf("not valid for ValueStore")
+		flog.ErrorPrintf("not valid for ValueStore")
 		return
 	}
 	var itemCount uint64
@@ -595,14 +605,14 @@ func groupwrite() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
+	flog.InfoPrintf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
 	if superseded > 0 {
-		tlogger.ErrorPrintf("%d SUPERCEDED!", superseded)
+		flog.ErrorPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func lookup() {
-	tlogger.InfoPrintf("lookup:")
+	flog.InfoPrintf("lookup:")
 	var missing uint64
 	var deleted uint64
 	begin := time.Now()
@@ -660,17 +670,17 @@ func lookup() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s to lookup %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number)
+	flog.InfoPrintf("%s %.0f/s to lookup %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number)
 	if missing > 0 {
-		tlogger.ErrorPrintf("%d MISSING!", missing)
+		flog.ErrorPrintf("%d MISSING!", missing)
 	}
 	if deleted > 0 {
-		tlogger.ErrorPrintf("%d DELETED!", deleted)
+		flog.ErrorPrintf("%d DELETED!", deleted)
 	}
 }
 
 func read() {
-	tlogger.InfoPrintf("read:")
+	flog.InfoPrintf("read:")
 	var valuesLength uint64
 	var missing uint64
 	var deleted uint64
@@ -752,17 +762,17 @@ func read() {
 	}
 	wg.Wait()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s %0.2fG/s to read %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(valuesLength)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number)
+	flog.InfoPrintf("%s %.0f/s %0.2fG/s to read %d values", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(valuesLength)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number)
 	if missing > 0 {
-		tlogger.ErrorPrintf("%d MISSING!", missing)
+		flog.ErrorPrintf("%d MISSING!", missing)
 	}
 	if deleted > 0 {
-		tlogger.ErrorPrintf("%d DELETED!", deleted)
+		flog.ErrorPrintf("%d DELETED!", deleted)
 	}
 }
 
 func write() {
-	tlogger.InfoPrintf("write:")
+	flog.InfoPrintf("write:")
 	var superseded uint64
 	timestamp := opts.Timestamp
 	if timestamp == 0 {
@@ -823,16 +833,16 @@ func write() {
 	wg.Wait()
 	opts.store.Flush()
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
+	flog.InfoPrintf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
 	if superseded > 0 {
-		tlogger.ErrorPrintf("%d SUPERCEDED!", superseded)
+		flog.ErrorPrintf("%d SUPERCEDED!", superseded)
 	}
 }
 
 func run() {
-	tlogger.InfoPrintf("run:")
+	flog.InfoPrintf("run:")
 	begin := time.Now()
 	<-time.After(1 * time.Minute)
 	dur := time.Now().Sub(begin)
-	tlogger.InfoPrintf("%s to run", dur)
+	flog.InfoPrintf("%s to run", dur)
 }
