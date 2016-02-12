@@ -61,7 +61,7 @@ func main() {
 	if _, err := parser.ParseArgs(args); err != nil {
 		os.Exit(1)
 	}
-	var debugWriter io.Writer = flog.NilWriter
+	var debugWriter io.Writer = &brimio.NullIO{}
 	if opts.Debug {
 		debugWriter = os.Stdout
 	}
