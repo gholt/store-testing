@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gholt/brimio"
 	"github.com/gholt/flog"
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/gholt/brimtime.v1"
-	"gopkg.in/gholt/brimutil.v1"
 )
 
 type optsStruct struct {
@@ -103,7 +103,7 @@ func main() {
 		opts.Timestamp = brimtime.TimeToUnixMicro(time.Now())
 	}
 	opts.keyspace = make([]byte, opts.Number*16)
-	brimutil.NewSeededScrambled(int64(opts.Random)).Read(opts.keyspace)
+	brimio.NewSeededScrambled(int64(opts.Random)).Read(opts.keyspace)
 	opts.buffers = make([][]byte, opts.Clients)
 	for i := 0; i < opts.Clients; i++ {
 		opts.buffers[i] = make([]byte, 4*1024*1024)
@@ -573,7 +573,7 @@ func groupwrite() {
 					randomness = value[10 : len(value)-10]
 				}
 			}
-			scr := brimutil.NewScrambled()
+			scr := brimio.NewScrambled()
 			var s uint64
 			number := len(opts.keyspace) / 16
 			numberPer := number / opts.Clients
@@ -793,7 +793,7 @@ func write() {
 					randomness = value[10 : len(value)-10]
 				}
 			}
-			scr := brimutil.NewScrambled()
+			scr := brimio.NewScrambled()
 			var s uint64
 			number := len(opts.keyspace) / 16
 			numberPer := number / opts.Clients
