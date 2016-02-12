@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/gholt/brimio"
+	"github.com/gholt/brimtime"
 	"github.com/gholt/flog"
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
-	"gopkg.in/gholt/brimtime.v1"
 )
 
 type optsStruct struct {
