@@ -190,7 +190,11 @@ func main() {
 				go func() {
 					for {
 						time.Sleep(60 * time.Second)
-						rlogger.DebugPrintf("%s", opts.repstore.Stats(false).String())
+						stats, err := opts.repstore.Stats(false)
+						if err != nil {
+							panic(err)
+						}
+						rlogger.DebugPrintf("%s", stats)
 					}
 				}()
 			}
@@ -219,7 +223,11 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(60 * time.Second)
-				logger.DebugPrintf("%s", opts.store.Stats(false).String())
+				stats, err := opts.store.Stats(false)
+				if err != nil {
+					panic(err)
+				}
+				logger.DebugPrintf("%s", stats)
 			}
 		}()
 	}
@@ -335,9 +343,17 @@ func main() {
 		wg.Add(1)
 		go func() {
 			if opts.GroupStore {
-				rgsStats = opts.repstore.Stats(opts.ExtendedStats).(*store.GroupStoreStats)
+				stringerStats, err := opts.repstore.Stats(opts.ExtendedStats)
+				if err != nil {
+					panic(err)
+				}
+				rgsStats = stringerStats.(*store.GroupStoreStats)
 			} else {
-				rvsStats = opts.repstore.Stats(opts.ExtendedStats).(*store.ValueStoreStats)
+				stringerStats, err := opts.repstore.Stats(opts.ExtendedStats)
+				if err != nil {
+					panic(err)
+				}
+				rvsStats = stringerStats.(*store.ValueStoreStats)
 			}
 			wg.Done()
 		}()
@@ -345,9 +361,17 @@ func main() {
 	var vsStats *store.ValueStoreStats
 	var gsStats *store.GroupStoreStats
 	if opts.GroupStore {
-		gsStats = opts.store.Stats(opts.ExtendedStats).(*store.GroupStoreStats)
+		stringerStats, err := opts.store.Stats(opts.ExtendedStats)
+		if err != nil {
+			panic(err)
+		}
+		gsStats = stringerStats.(*store.GroupStoreStats)
 	} else {
-		vsStats = opts.store.Stats(opts.ExtendedStats).(*store.ValueStoreStats)
+		stringerStats, err := opts.store.Stats(opts.ExtendedStats)
+		if err != nil {
+			panic(err)
+		}
+		vsStats = stringerStats.(*store.ValueStoreStats)
 	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
@@ -487,7 +511,10 @@ func grouplookup() {
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				list := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				list, err := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				if err != nil {
+					panic(err)
+				}
 				atomic.AddUint64(&itemCount, uint64(len(list)))
 				if uint64(len(list)) != groupSize {
 					atomic.AddUint64(&mismatch, 1)
@@ -528,7 +555,11 @@ func groupread() {
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				items := uint64(len(gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))))
+				itemList, err := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				items := uint64(len(itemList))
+				if err != nil {
+					panic(err)
+				}
 				atomic.AddUint64(&itemCount, items)
 				if items != groupSize {
 					flog.ErrorPrintf("%d, %d", groupSize, items)
