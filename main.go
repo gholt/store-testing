@@ -18,6 +18,8 @@ import (
 	"github.com/gholt/flog"
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
+	"github.com/pandemicsyn/oort/api"
+	// "google.golang.org/grpc"
 )
 
 type optsStruct struct {
@@ -210,15 +212,22 @@ func main() {
 	}
 	var restartChan chan error
 	if opts.GroupStore {
-		opts.store, restartChan = store.NewGroupStore(gscfg)
+		// opts.store, restartChan = store.NewGroupStore(gscfg)
+		var err error
+		opts.store, err = api.NewGroup("127.0.0.1:6789", true)
+		if err != nil {
+			panic(err)
+		}
 	} else {
 		opts.store, restartChan = store.NewValueStore(vscfg)
 	}
-	go func(restartChan chan error) {
-		if err := <-restartChan; err != nil {
-			panic(err)
-		}
-	}(restartChan)
+	if restartChan != nil {
+		go func(restartChan chan error) {
+			if err := <-restartChan; err != nil {
+				panic(err)
+			}
+		}(restartChan)
+	}
 	if opts.Metrics {
 		go func() {
 			for {
@@ -835,15 +844,18 @@ func write() {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
 			if opts.GroupStore {
+				errorCount := 0
 				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					scr.Read(randomness)
 					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
-						panic(err)
+						//panic(err)
+						errorCount++
 					} else if oldTimestamp > timestamp {
 						s++
 					}
 				}
+				flog.ErrorPrintf("%d errors", errorCount)
 			} else {
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
