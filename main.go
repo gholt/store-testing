@@ -37,7 +37,7 @@ type optsStruct struct {
 	TombstoneAge  int   `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
 	MaxGroupSize  int   `long:"max-group-size" description:"Maximum number of items per group for groupwrite."`
 	Positional    struct {
-		Tests []string `name:"tests" description:"blockprof cpuprof delete lookup read run write"`
+		Tests []string `name:"tests" description:"blockprof cpuprof delete grouplookup groupread groupwrite lookup read run write"`
 	} `positional-args:"yes"`
 	blockprofi int
 	blockproff *os.File
@@ -564,15 +564,17 @@ func groupread() {
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				itemList, err := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-				items := uint64(len(itemList))
-				if err != nil {
-					panic(err)
-				}
-				atomic.AddUint64(&itemCount, items)
-				if items != groupSize {
-					flog.ErrorPrintf("%d, %d", groupSize, items)
-					atomic.AddUint64(&mismatch, 1)
+				if ags, ok := gs.(api.GroupStore); ok {
+					itemList, err := ags.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					items := uint64(len(itemList))
+					if err != nil {
+						panic(err)
+					}
+					atomic.AddUint64(&itemCount, items)
+					if items != groupSize {
+						flog.ErrorPrintf("%d, %d", groupSize, items)
+						atomic.AddUint64(&mismatch, 1)
+					}
 				}
 			}
 			wg.Done()
@@ -855,7 +857,6 @@ func write() {
 						s++
 					}
 				}
-				flog.ErrorPrintf("%d errors", errorCount)
 			} else {
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
