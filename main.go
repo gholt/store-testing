@@ -214,7 +214,7 @@ func main() {
 	if opts.GroupStore {
 		// opts.store, restartChan = store.NewGroupStore(gscfg)
 		var err error
-		opts.store, err = api.NewGroup("127.0.0.1:6789", true)
+		opts.store, err = api.NewGroupStore("127.0.0.1:6789", opts.Cores*opts.Cores, true)
 		if err != nil {
 			panic(err)
 		}
