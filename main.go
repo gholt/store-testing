@@ -19,25 +19,25 @@ import (
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"github.com/pandemicsyn/oort/api"
-	// "google.golang.org/grpc"
 )
 
 type optsStruct struct {
-	GroupStore    bool  `short:"g" long:"groupstore" description:"Use GroupStore instead of ValueStore."`
-	Clients       int   `long:"clients" description:"The number of clients. Default: cores*cores"`
-	Cores         int   `long:"cores" description:"The number of cores. Default: CPU core count"`
-	Debug         bool  `long:"debug" description:"Turns on debug output."`
-	ExtendedStats bool  `long:"extended-stats" description:"Extended statistics at exit."`
-	Metrics       bool  `long:"metrics" description:"Displays metrics one per minute."`
-	Length        int   `short:"l" long:"length" description:"Length of values. Default: 0"`
-	Number        int   `short:"n" long:"number" description:"Number of keys. Default: 0"`
-	Random        int   `long:"random" description:"Random number seed. Default: 0"`
-	Replicate     bool  `long:"replicate" description:"Creates a second value store that will test replication."`
-	Timestamp     int64 `long:"timestamp" description:"Timestamp value. Default: current time"`
-	TombstoneAge  int   `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
-	MaxGroupSize  int   `long:"max-group-size" description:"Maximum number of items per group for groupwrite."`
+	API           string `long:"api" description:"Connect to the address given, using Oort API instead of local store"`
+	GroupStore    bool   `short:"g" long:"groupstore" description:"Use GroupStore instead of ValueStore."`
+	Clients       int    `long:"clients" description:"The number of clients. Default: cores*cores"`
+	Cores         int    `long:"cores" description:"The number of cores. Default: CPU core count"`
+	Debug         bool   `long:"debug" description:"Turns on debug output."`
+	ExtendedStats bool   `long:"extended-stats" description:"Extended statistics at exit."`
+	Metrics       bool   `long:"metrics" description:"Displays metrics one per minute."`
+	Length        int    `short:"l" long:"length" description:"Length of values. Default: 0"`
+	Number        int    `short:"n" long:"number" description:"Number of keys. Default: 0"`
+	Random        int    `long:"random" description:"Random number seed. Default: 0"`
+	Replicate     bool   `long:"replicate" description:"Creates a second value store that will test replication."`
+	Timestamp     int64  `long:"timestamp" description:"Timestamp value. Default: current time"`
+	TombstoneAge  int    `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
+	MaxGroupSize  int    `long:"max-group-size" description:"Maximum number of items per group for writegroup."`
 	Positional    struct {
-		Tests []string `name:"tests" description:"blockprof cpuprof delete grouplookup groupread groupwrite lookup read run write"`
+		Tests []string `name:"tests" description:"blockprof cpuprof write lookup read delete writegroup lookupgroup readgroup run"`
 	} `positional-args:"yes"`
 	blockprofi int
 	blockproff *os.File
@@ -80,9 +80,9 @@ func main() {
 		case "blockprof":
 		case "cpuprof":
 		case "delete":
-		case "grouplookup":
-		case "groupread":
-		case "groupwrite":
+		case "lookupgroup":
+		case "readgroup":
+		case "writegroup":
 		case "lookup":
 		case "read":
 		case "run":
@@ -212,14 +212,25 @@ func main() {
 	}
 	var restartChan chan error
 	if opts.GroupStore {
-		// opts.store, restartChan = store.NewGroupStore(gscfg)
-		var err error
-		opts.store, err = api.NewGroupStore("127.0.0.1:6789", opts.Cores*opts.Cores, true)
-		if err != nil {
-			panic(err)
+		if opts.API != "" {
+			var err error
+			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores, true)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			opts.store, restartChan = store.NewGroupStore(gscfg)
 		}
 	} else {
-		opts.store, restartChan = store.NewValueStore(vscfg)
+		if opts.API != "" {
+			var err error
+			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores, true)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			opts.store, restartChan = store.NewValueStore(vscfg)
+		}
 	}
 	if restartChan != nil {
 		go func(restartChan chan error) {
@@ -302,12 +313,12 @@ func main() {
 			}
 		case "delete":
 			delete()
-		case "grouplookup":
-			grouplookup()
-		case "groupread":
-			groupread()
-		case "groupwrite":
-			groupwrite()
+		case "lookupgroup":
+			lookupgroup()
+		case "readgroup":
+			readgroup()
+		case "writegroup":
+			writegroup()
 		case "lookup":
 			lookup()
 		case "read":
@@ -346,74 +357,107 @@ func main() {
 	memstat()
 	flog.InfoPrintf("stats:")
 	begin = time.Now()
+	var rvsStringerStats fmt.Stringer
+	var rgsStringerStats fmt.Stringer
 	var rvsStats *store.ValueStoreStats
 	var rgsStats *store.GroupStoreStats
+	var err error
 	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
 			if opts.GroupStore {
-				stringerStats, err := opts.repstore.Stats(opts.ExtendedStats)
+				rgsStringerStats, err = opts.repstore.Stats(opts.ExtendedStats)
 				if err != nil {
 					panic(err)
 				}
-				rgsStats = stringerStats.(*store.GroupStoreStats)
+				rgsStats, _ = rgsStringerStats.(*store.GroupStoreStats)
 			} else {
-				stringerStats, err := opts.repstore.Stats(opts.ExtendedStats)
+				rvsStringerStats, err = opts.repstore.Stats(opts.ExtendedStats)
 				if err != nil {
 					panic(err)
 				}
-				rvsStats = stringerStats.(*store.ValueStoreStats)
+				rvsStats, _ = rvsStringerStats.(*store.ValueStoreStats)
 			}
 			wg.Done()
 		}()
 	}
+	var vsStringerStats fmt.Stringer
+	var gsStringerStats fmt.Stringer
 	var vsStats *store.ValueStoreStats
 	var gsStats *store.GroupStoreStats
 	if opts.GroupStore {
-		stringerStats, err := opts.store.Stats(opts.ExtendedStats)
+		gsStringerStats, err = opts.store.Stats(opts.ExtendedStats)
 		if err != nil {
 			panic(err)
 		}
-		gsStats = stringerStats.(*store.GroupStoreStats)
+		gsStats, _ = gsStringerStats.(*store.GroupStoreStats)
 	} else {
-		stringerStats, err := opts.store.Stats(opts.ExtendedStats)
+		vsStringerStats, err = opts.store.Stats(opts.ExtendedStats)
 		if err != nil {
 			panic(err)
 		}
-		vsStats = stringerStats.(*store.ValueStoreStats)
+		vsStats, _ = vsStringerStats.(*store.ValueStoreStats)
 	}
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	flog.InfoPrintf("%s to obtain stats", dur)
-	if opts.ExtendedStats {
-		if opts.GroupStore {
-			flog.InfoPrintf("GroupStore: stats:\n%s", gsStats.String())
-		} else {
-			flog.InfoPrintf("ValueStore: stats:\n%s", vsStats.String())
+	statsOutput := false
+	if opts.GroupStore {
+		if gsStats == nil {
+			flog.InfoPrintf("GroupStore: stats:\n%s", gsStringerStats)
+			statsOutput = true
 		}
 	} else {
-		if opts.GroupStore {
-			flog.InfoPrintf("GroupStore: Values: %d", gsStats.Values)
-			flog.InfoPrintf("GroupStore: ValueBytes: %d", gsStats.ValueBytes)
-		} else {
-			flog.InfoPrintf("ValueStore: Values: %d", vsStats.Values)
-			flog.InfoPrintf("ValueStore: ValueBytes: %d", vsStats.ValueBytes)
+		if vsStats == nil {
+			flog.InfoPrintf("ValueStore: stats:\n%s", vsStringerStats)
+			statsOutput = true
 		}
 	}
-	if opts.repstore != nil {
+	if !statsOutput {
 		if opts.ExtendedStats {
 			if opts.GroupStore {
-				flog.InfoPrintf("ReplicatedGroupStore: stats:\n%s", rgsStats.String())
+				flog.InfoPrintf("GroupStore: stats:\n%s", gsStats.String())
 			} else {
-				flog.InfoPrintf("ReplicatedValueStore: stats:\n%s", rvsStats.String())
+				flog.InfoPrintf("ValueStore: stats:\n%s", vsStats.String())
 			}
 		} else {
 			if opts.GroupStore {
-				flog.InfoPrintf("ReplicatedGroupStore: Values: %d", rgsStats.Values)
-				flog.InfoPrintf("ReplicatedGroupStore: ValueBytes: %d", rgsStats.ValueBytes)
+				flog.InfoPrintf("GroupStore: Values: %d", gsStats.Values)
+				flog.InfoPrintf("GroupStore: ValueBytes: %d", gsStats.ValueBytes)
 			} else {
-				flog.InfoPrintf("ReplicatedValueStore: Values: %d", rvsStats.Values)
-				flog.InfoPrintf("ReplicatedValueStore: ValueBytes: %d", rvsStats.ValueBytes)
+				flog.InfoPrintf("ValueStore: Values: %d", vsStats.Values)
+				flog.InfoPrintf("ValueStore: ValueBytes: %d", vsStats.ValueBytes)
+			}
+		}
+	}
+	if opts.repstore != nil {
+		statsOutput = false
+		if opts.GroupStore {
+			if rgsStats == nil {
+				flog.InfoPrintf("ReplicatedGroupStore: stats:\n%s", rgsStringerStats)
+				statsOutput = true
+			}
+		} else {
+			if rvsStats == nil {
+				flog.InfoPrintf("ReplicatedValueStore: stats:\n%s", rvsStringerStats)
+				statsOutput = true
+			}
+		}
+		if !statsOutput {
+			if opts.ExtendedStats {
+				if opts.GroupStore {
+					flog.InfoPrintf("ReplicatedGroupStore: stats:\n%s", rgsStats.String())
+				} else {
+					flog.InfoPrintf("ReplicatedValueStore: stats:\n%s", rvsStats.String())
+				}
+			} else {
+				if opts.GroupStore {
+					flog.InfoPrintf("ReplicatedGroupStore: Values: %d", rgsStats.Values)
+					flog.InfoPrintf("ReplicatedGroupStore: ValueBytes: %d", rgsStats.ValueBytes)
+				} else {
+					flog.InfoPrintf("ReplicatedValueStore: Values: %d", rvsStats.Values)
+					flog.InfoPrintf("ReplicatedValueStore: ValueBytes: %d", rvsStats.ValueBytes)
+				}
 			}
 		}
 	}
@@ -496,8 +540,8 @@ func delete() {
 	}
 }
 
-func grouplookup() {
-	flog.InfoPrintf("grouplookup:")
+func lookupgroup() {
+	flog.InfoPrintf("lookupgroup:")
 	if !opts.GroupStore {
 		flog.CriticalPrintf("not valid for ValueStore")
 		return
@@ -540,8 +584,8 @@ func grouplookup() {
 	}
 }
 
-func groupread() {
-	flog.InfoPrintf("groupread:")
+func readgroup() {
+	flog.InfoPrintf("readgroup:")
 	if !opts.GroupStore {
 		flog.ErrorPrintf("not valid for ValueStore")
 		return
@@ -566,15 +610,20 @@ func groupread() {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				if ags, ok := gs.(api.GroupStore); ok {
 					itemList, err := ags.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-					items := uint64(len(itemList))
 					if err != nil {
 						panic(err)
 					}
+					// TODO: Should probably verify all the values seem proper
+					// like read does.
+					items := uint64(len(itemList))
 					atomic.AddUint64(&itemCount, items)
 					if items != groupSize {
 						flog.ErrorPrintf("%d, %d", groupSize, items)
 						atomic.AddUint64(&mismatch, 1)
 					}
+				} else {
+					// TODO: Local store needs to do LookupGroup and then Read
+					// each item.
 				}
 			}
 			wg.Done()
@@ -588,8 +637,8 @@ func groupread() {
 	}
 }
 
-func groupwrite() {
-	flog.InfoPrintf("groupwrite:")
+func writegroup() {
+	flog.InfoPrintf("writegroup:")
 	if !opts.GroupStore {
 		flog.ErrorPrintf("not valid for ValueStore")
 		return
