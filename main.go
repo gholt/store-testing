@@ -22,27 +22,29 @@ import (
 )
 
 type optsStruct struct {
-	API           string `long:"api" description:"Connect to the address given, using Oort API instead of local store"`
-	GroupStore    bool   `short:"g" long:"groupstore" description:"Use GroupStore instead of ValueStore."`
-	Clients       int    `long:"clients" description:"The number of clients. Default: cores*cores"`
-	Cores         int    `long:"cores" description:"The number of cores. Default: CPU core count"`
-	Debug         bool   `long:"debug" description:"Turns on debug output."`
-	ExtendedStats bool   `long:"extended-stats" description:"Extended statistics at exit."`
-	Metrics       bool   `long:"metrics" description:"Displays metrics one per minute."`
-	Length        int    `short:"l" long:"length" description:"Length of values. Default: 0"`
-	Number        int    `short:"n" long:"number" description:"Number of keys. Default: 0"`
-	Random        int    `long:"random" description:"Random number seed. Default: 0"`
-	Replicate     bool   `long:"replicate" description:"Creates a second value store that will test replication."`
-	Timestamp     int64  `long:"timestamp" description:"Timestamp value. Default: current time"`
-	TombstoneAge  int    `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
-	MaxGroupSize  int    `long:"max-group-size" description:"Maximum number of items per group for writegroup."`
+	Scale         float64 `long:"scale" description:"Sets the overall scale factor for many settings; default is 1, set lower (e.g. 0.5) to decrease memory usage."`
+	API           string  `long:"api" description:"Connect to the address given, using Oort API instead of local store"`
+	GroupStore    bool    `short:"g" long:"groupstore" description:"Use GroupStore instead of ValueStore."`
+	Clients       int     `long:"clients" description:"The number of clients. Default: cores*cores"`
+	Cores         int     `long:"cores" description:"The number of cores. Default: CPU core count"`
+	Debug         bool    `long:"debug" description:"Turns on debug output."`
+	ExtendedStats bool    `long:"extended-stats" description:"Extended statistics at exit."`
+	Metrics       bool    `long:"metrics" description:"Displays metrics one per minute."`
+	Length        int     `short:"l" long:"length" description:"Length of values. Default: 0"`
+	Number        int     `short:"n" long:"number" description:"Number of keys. Default: 0"`
+	Random        int     `long:"random" description:"Random number seed. Default: 0"`
+	Replicate     bool    `long:"replicate" description:"Creates a second value store that will test replication."`
+	Timestamp     int64   `long:"timestamp" description:"Timestamp value. Default: current time"`
+	TombstoneAge  int     `long:"tombstone-age" description:"Seconds to keep tombstones. Default: 4 hours"`
+	MaxGroupSize  int     `long:"max-group-size" description:"Maximum number of items per group for writegroup."`
 	Positional    struct {
-		Tests []string `name:"tests" description:"blockprof cpuprof write lookup read delete writegroup lookupgroup readgroup run"`
+		Tests []string `name:"tests" description:"blockprof cpuprof memprof write lookup read delete writegroup lookupgroup readgroup run"`
 	} `positional-args:"yes"`
 	blockprofi int
 	blockproff *os.File
 	cpuprofi   int
 	cpuproff   *os.File
+	memprofi   int
 	keyspace   []byte
 	buffers    [][]byte
 	st         runtime.MemStats
@@ -79,6 +81,7 @@ func main() {
 		switch arg {
 		case "blockprof":
 		case "cpuprof":
+		case "memprof":
 		case "delete":
 		case "lookupgroup":
 		case "readgroup":
@@ -119,6 +122,7 @@ func main() {
 	if opts.GroupStore {
 		logger = flog.Sub(&flog.Config{Name: "group-store"})
 		gscfg = &store.GroupStoreConfig{
+			Scale:       opts.Scale,
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
 			LogError:    logger.ErrorPrintf,
@@ -126,6 +130,7 @@ func main() {
 	} else {
 		logger = flog.Sub(&flog.Config{Name: "value-store"})
 		vscfg = &store.ValueStoreConfig{
+			Scale:       opts.Scale,
 			Workers:     opts.Cores,
 			LogCritical: logger.CriticalPrintf,
 			LogError:    logger.ErrorPrintf,
@@ -311,6 +316,16 @@ func main() {
 				}
 				pprof.StartCPUProfile(opts.cpuproff)
 			}
+		case "memprof":
+			runtime.GC()
+			f, err := os.Create(fmt.Sprintf("memprof%d", opts.memprofi))
+			if err != nil {
+				flog.CriticalPrintln(err)
+				os.Exit(1)
+			}
+			opts.memprofi++
+			pprof.WriteHeapProfile(f)
+			f.Close()
 		case "delete":
 			delete()
 		case "lookupgroup":
