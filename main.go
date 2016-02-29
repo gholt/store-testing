@@ -623,7 +623,7 @@ func readgroup() {
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				if ags, ok := gs.(api.GroupStore); ok {
+				if ags, ok := gs.(store.GroupStore); ok {
 					itemList, err := ags.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
 					if err != nil {
 						panic(err)
