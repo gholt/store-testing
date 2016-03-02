@@ -219,7 +219,7 @@ func main() {
 	if opts.GroupStore {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores, true)
+			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores)
 			if err != nil {
 				panic(err)
 			}
@@ -229,7 +229,7 @@ func main() {
 	} else {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores, true)
+			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores)
 			if err != nil {
 				panic(err)
 			}
@@ -740,7 +740,7 @@ func lookup() {
 				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					timestamp, _, err := gs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-					if err == store.ErrNotFound {
+					if store.IsNotFound(err) {
 						if timestamp == 0 {
 							m++
 						} else {
@@ -754,7 +754,7 @@ func lookup() {
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
 					timestamp, _, err := vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
-					if err == store.ErrNotFound {
+					if store.IsNotFound(err) {
 						if timestamp == 0 {
 							m++
 						} else {
@@ -805,7 +805,7 @@ func read() {
 					gs := opts.store.(store.GroupStore)
 					for o := 0; o < len(keys); o += 16 {
 						timestamp, v, err := gs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-						if err == store.ErrNotFound {
+						if store.IsNotFound(err) {
 							if timestamp == 0 {
 								m++
 							} else {
@@ -825,7 +825,7 @@ func read() {
 					vs := opts.store.(store.ValueStore)
 					for o := 0; o < len(keys); o += 16 {
 						timestamp, v, err := vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
-						if err == store.ErrNotFound {
+						if store.IsNotFound(err) {
 							if timestamp == 0 {
 								m++
 							} else {
