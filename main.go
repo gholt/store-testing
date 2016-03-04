@@ -19,6 +19,7 @@ import (
 	"github.com/gholt/store"
 	"github.com/jessevdk/go-flags"
 	"github.com/pandemicsyn/oort/api"
+	"golang.org/x/net/context"
 )
 
 type optsStruct struct {
@@ -197,7 +198,7 @@ func main() {
 				go func() {
 					for {
 						time.Sleep(60 * time.Second)
-						stats, err := opts.repstore.Stats(false)
+						stats, err := opts.repstore.Stats(context.Background(), false)
 						if err != nil {
 							panic(err)
 						}
@@ -219,7 +220,7 @@ func main() {
 	if opts.GroupStore {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores)
+			opts.store, err = api.NewGroupStore(context.Background(), opts.API, opts.Cores*opts.Cores)
 			if err != nil {
 				panic(err)
 			}
@@ -229,7 +230,7 @@ func main() {
 	} else {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores)
+			opts.store, err = api.NewValueStore(context.Background(), opts.API, opts.Cores*opts.Cores)
 			if err != nil {
 				panic(err)
 			}
@@ -248,7 +249,7 @@ func main() {
 		go func() {
 			for {
 				time.Sleep(60 * time.Second)
-				stats, err := opts.store.Stats(false)
+				stats, err := opts.store.Stats(context.Background(), false)
 				if err != nil {
 					panic(err)
 				}
@@ -262,7 +263,7 @@ func main() {
 		opts.rring.Start()
 		wg.Add(1)
 		go func() {
-			if err := opts.repstore.Startup(); err != nil {
+			if err := opts.repstore.Startup(context.Background()); err != nil {
 				panic(err)
 			}
 			wg.Done()
@@ -270,7 +271,7 @@ func main() {
 	}
 	wg.Add(1)
 	go func() {
-		if err := opts.store.Startup(); err != nil {
+		if err := opts.store.Startup(context.Background()); err != nil {
 			panic(err)
 		}
 		wg.Done()
@@ -361,11 +362,11 @@ func main() {
 	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.repstore.Flush()
+			opts.repstore.Flush(context.Background())
 			wg.Done()
 		}()
 	}
-	opts.store.Flush()
+	opts.store.Flush(context.Background())
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	flog.InfoPrintf("%s to flush", dur)
@@ -381,13 +382,13 @@ func main() {
 		wg.Add(1)
 		go func() {
 			if opts.GroupStore {
-				rgsStringerStats, err = opts.repstore.Stats(opts.ExtendedStats)
+				rgsStringerStats, err = opts.repstore.Stats(context.Background(), opts.ExtendedStats)
 				if err != nil {
 					panic(err)
 				}
 				rgsStats, _ = rgsStringerStats.(*store.GroupStoreStats)
 			} else {
-				rvsStringerStats, err = opts.repstore.Stats(opts.ExtendedStats)
+				rvsStringerStats, err = opts.repstore.Stats(context.Background(), opts.ExtendedStats)
 				if err != nil {
 					panic(err)
 				}
@@ -401,13 +402,13 @@ func main() {
 	var vsStats *store.ValueStoreStats
 	var gsStats *store.GroupStoreStats
 	if opts.GroupStore {
-		gsStringerStats, err = opts.store.Stats(opts.ExtendedStats)
+		gsStringerStats, err = opts.store.Stats(context.Background(), opts.ExtendedStats)
 		if err != nil {
 			panic(err)
 		}
 		gsStats, _ = gsStringerStats.(*store.GroupStoreStats)
 	} else {
-		vsStringerStats, err = opts.store.Stats(opts.ExtendedStats)
+		vsStringerStats, err = opts.store.Stats(context.Background(), opts.ExtendedStats)
 		if err != nil {
 			panic(err)
 		}
@@ -485,11 +486,11 @@ func main() {
 	if opts.repstore != nil {
 		wg.Add(1)
 		go func() {
-			opts.repstore.Shutdown()
+			opts.repstore.Shutdown(context.Background())
 			wg.Done()
 		}()
 	}
-	opts.store.Shutdown()
+	opts.store.Shutdown(context.Background())
 	wg.Wait()
 	dur = time.Now().Sub(begin)
 	flog.InfoPrintf("%s to shutdown", dur)
@@ -522,18 +523,20 @@ func delete() {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
 			if opts.GroupStore {
+				ctx := context.Background()
 				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
-					if oldTimestamp, err := gs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
+					if oldTimestamp, err := gs.Delete(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
 						panic(err)
 					} else if oldTimestamp > timestamp {
 						s++
 					}
 				}
 			} else {
+				ctx := context.Background()
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
-					if oldTimestamp, err := vs.Delete(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
+					if oldTimestamp, err := vs.Delete(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp); err != nil {
 						panic(err)
 					} else if oldTimestamp > timestamp {
 						s++
@@ -547,7 +550,7 @@ func delete() {
 		}(i)
 	}
 	wg.Wait()
-	opts.store.Flush()
+	opts.store.Flush(context.Background())
 	dur := time.Now().Sub(begin)
 	flog.InfoPrintf("%s %.0f/s to delete %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), opts.Number, timestamp)
 	if superseded > 0 {
@@ -576,10 +579,11 @@ func lookupgroup() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
+			ctx := context.Background()
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
-				list, err := gs.LookupGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+				list, err := gs.LookupGroup(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
 				if err != nil {
 					panic(err)
 				}
@@ -620,11 +624,12 @@ func readgroup() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
+			ctx := context.Background()
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				if ags, ok := gs.(store.GroupStore); ok {
-					itemList, err := ags.ReadGroup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					itemList, err := ags.ReadGroup(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
 					if err != nil {
 						panic(err)
 					}
@@ -689,13 +694,14 @@ func writegroup() {
 			} else {
 				keys = opts.keyspace[numberPer*client*16 : numberPer*(client+1)*16]
 			}
+			ctx := context.Background()
 			gs := opts.store.(store.GroupStore)
 			for o := 0; o < len(keys); o += 16 {
 				groupSize := 1 + (binary.BigEndian.Uint64(keys[o:]) % uint64(opts.MaxGroupSize))
 				atomic.AddUint64(&itemCount, groupSize)
 				for p := uint64(0); p < groupSize; p++ {
 					scr.Read(randomness)
-					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), p, p, timestamp, value); err != nil {
+					if oldTimestamp, err := gs.Write(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), p, p, timestamp, value); err != nil {
 						panic(err)
 					} else if oldTimestamp > timestamp {
 						s++
@@ -709,7 +715,7 @@ func writegroup() {
 		}(i)
 	}
 	wg.Wait()
-	opts.store.Flush()
+	opts.store.Flush(context.Background())
 	dur := time.Now().Sub(begin)
 	flog.InfoPrintf("%s %.0f/s %0.2fG/s to write %d items (%d groups) (timestamp %d)", dur, float64(itemCount)/(float64(dur)/float64(time.Second)), float64(itemCount)/(float64(dur)/float64(time.Second))/1024/1024/1024, itemCount, opts.Number, timestamp)
 	if superseded > 0 {
@@ -737,9 +743,10 @@ func lookup() {
 			var m uint64
 			var d uint64
 			if opts.GroupStore {
+				ctx := context.Background()
 				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
-					timestamp, _, err := gs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					timestamp, _, err := gs.Lookup(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
 					if store.IsNotFound(err) {
 						if timestamp == 0 {
 							m++
@@ -751,9 +758,10 @@ func lookup() {
 					}
 				}
 			} else {
+				ctx := context.Background()
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
-					timestamp, _, err := vs.Lookup(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
+					timestamp, _, err := vs.Lookup(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]))
 					if store.IsNotFound(err) {
 						if timestamp == 0 {
 							m++
@@ -802,9 +810,10 @@ func read() {
 				var m uint64
 				var d uint64
 				if opts.GroupStore {
+					ctx := context.Background()
 					gs := opts.store.(store.GroupStore)
 					for o := 0; o < len(keys); o += 16 {
-						timestamp, v, err := gs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
+						timestamp, v, err := gs.Read(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
 						if store.IsNotFound(err) {
 							if timestamp == 0 {
 								m++
@@ -822,9 +831,10 @@ func read() {
 						}
 					}
 				} else {
+					ctx := context.Background()
 					vs := opts.store.(store.ValueStore)
 					for o := 0; o < len(keys); o += 16 {
-						timestamp, v, err := vs.Read(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
+						timestamp, v, err := vs.Read(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), opts.buffers[client][:0])
 						if store.IsNotFound(err) {
 							if timestamp == 0 {
 								m++
@@ -911,10 +921,11 @@ func write() {
 			}
 			if opts.GroupStore {
 				errorCount := 0
+				ctx := context.Background()
 				gs := opts.store.(store.GroupStore)
 				for o := 0; o < len(keys); o += 16 {
 					scr.Read(randomness)
-					if oldTimestamp, err := gs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
+					if oldTimestamp, err := gs.Write(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
 						//panic(err)
 						errorCount++
 					} else if oldTimestamp > timestamp {
@@ -922,10 +933,11 @@ func write() {
 					}
 				}
 			} else {
+				ctx := context.Background()
 				vs := opts.store.(store.ValueStore)
 				for o := 0; o < len(keys); o += 16 {
 					scr.Read(randomness)
-					if oldTimestamp, err := vs.Write(binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
+					if oldTimestamp, err := vs.Write(ctx, binary.BigEndian.Uint64(keys[o:]), binary.BigEndian.Uint64(keys[o+8:]), timestamp, value); err != nil {
 						panic(err)
 					} else if oldTimestamp > timestamp {
 						s++
@@ -939,7 +951,7 @@ func write() {
 		}(i)
 	}
 	wg.Wait()
-	opts.store.Flush()
+	opts.store.Flush(context.Background())
 	dur := time.Now().Sub(begin)
 	flog.InfoPrintf("%s %.0f/s %0.2fG/s to write %d values (timestamp %d)", dur, float64(opts.Number)/(float64(dur)/float64(time.Second)), float64(opts.Number*opts.Length)/(float64(dur)/float64(time.Second))/1024/1024/1024, opts.Number, timestamp)
 	if superseded > 0 {
