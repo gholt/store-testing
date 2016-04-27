@@ -220,7 +220,7 @@ func main() {
 	if opts.GroupStore {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores)
+			opts.store, err = api.NewGroupStore(opts.API, opts.Cores*opts.Cores, nil)
 			if err != nil {
 				panic(err)
 			}
@@ -230,7 +230,7 @@ func main() {
 	} else {
 		if opts.API != "" {
 			var err error
-			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores)
+			opts.store, err = api.NewValueStore(opts.API, opts.Cores*opts.Cores, nil)
 			if err != nil {
 				panic(err)
 			}
