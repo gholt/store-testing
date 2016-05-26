@@ -134,8 +134,8 @@ func (rp *ringPipe) MsgToNode(m ring.Msg, localNodeID uint64, timeout time.Durat
 	case rp.writeChan <- m:
 	case <-time.After(timeout):
 		atomic.AddUint32(&rp.sendDrops, 1)
+		m.Free(0, 1)
 	}
-	m.Free()
 }
 
 func (rp *ringPipe) MsgToOtherReplicas(m ring.Msg, partition uint32, timeout time.Duration) {
@@ -143,8 +143,8 @@ func (rp *ringPipe) MsgToOtherReplicas(m ring.Msg, partition uint32, timeout tim
 	case rp.writeChan <- m:
 	case <-time.After(timeout):
 		atomic.AddUint32(&rp.sendDrops, 1)
+		m.Free(0, 1)
 	}
-	m.Free()
 }
 
 func (rp *ringPipe) reading() {
@@ -223,13 +223,16 @@ func (rp *ringPipe) writing() {
 		_, err := rp.conn.Write(b)
 		if err != nil {
 			rp.logError.Print("err writing msg", err)
+			m.Free(0, 1)
 			break
 		}
 		_, err = m.WriteContent(rp.conn)
 		if err != nil {
 			rp.logError.Print("err writing msg content", err)
+			m.Free(0, 1)
 			break
 		}
+		m.Free(1, 0)
 	}
 	rp.writingDoneChan <- struct{}{}
 }
